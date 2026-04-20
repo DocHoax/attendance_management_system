@@ -36,6 +36,15 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const floatingTiles = [
+    { className: 'left-[6%] top-[8%]' },
+    { className: 'left-[22%] top-[16%]' },
+    { className: 'right-[10%] top-[10%]' },
+    { className: 'right-[16%] top-[48%]' },
+    { className: 'left-[12%] bottom-[14%]' },
+    { className: 'right-[6%] bottom-[10%]' },
+  ];
+
   const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
   };
@@ -57,20 +66,16 @@ export function Login() {
   return (
     <div className="min-h-screen flex">
       {/* Left Side - Visual */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-slate-900">
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-slate-900 items-center justify-center px-12 xl:px-16">
         {/* Animated Background */}
         <div className="absolute inset-0">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/20 to-slate-900" />
           
           {/* Floating Elements */}
-          {[...Array(6)].map((_, i) => (
+          {floatingTiles.map((tile, i) => (
             <motion.div
               key={i}
-              className="absolute"
-              style={{
-                left: `${15 + i * 15}%`,
-                top: `${20 + (i % 3) * 25}%`,
-              }}
+              className={`absolute ${tile.className}`}
               animate={{
                 y: [0, -20, 0],
                 rotate: [0, 5, -5, 0],
@@ -81,12 +86,12 @@ export function Login() {
                 ease: 'easeInOut',
               }}
             >
-              <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${
+              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${
                 i % 3 === 0 ? 'from-primary/30 to-primary/10' :
                 i % 3 === 1 ? 'from-secondary/30 to-secondary/10' :
                 'from-success/30 to-success/10'
               } backdrop-blur-sm border border-white/10 flex items-center justify-center`}>
-                <QrCode className="w-8 h-8 text-white/50" />
+                <QrCode className="w-7 h-7 text-white/50" />
               </div>
             </motion.div>
           ))}
@@ -102,14 +107,15 @@ export function Login() {
         </div>
         
         {/* Content */}
-        <div className="relative z-10 flex flex-col justify-center px-12">
+        <div className="relative z-10 flex w-full max-w-xl flex-col justify-center gap-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
+            className="space-y-8"
           >
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shrink-0 shadow-lg shadow-primary/25">
                 <QrCode className="w-8 h-8 text-white" />
               </div>
               <div>
@@ -118,17 +124,17 @@ export function Login() {
               </div>
             </div>
             
-            <h2 className="text-4xl font-bold text-white mb-4 leading-tight">
+            <h2 className="max-w-lg text-5xl font-bold text-white leading-[1.05] tracking-tight">
               Revolutionizing<br />
               <span className="text-gradient">Attendance Tracking</span>
             </h2>
             
-            <p className="text-lg text-muted-foreground mb-8 max-w-md">
+            <p className="max-w-lg text-lg leading-8 text-muted-foreground">
               Streamline your classroom attendance with our cutting-edge barcode scanning technology. 
               Fast, secure, and effortless.
             </p>
             
-            <div className="flex items-center gap-6">
+            <div className="flex flex-wrap items-center gap-6">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-primary" />
                 <span className="text-sm text-white">Real-time Tracking</span>
