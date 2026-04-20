@@ -72,6 +72,10 @@ export type CourseCreationInput = {
   color: string;
 };
 
+export type CourseUpdateInput = CourseCreationInput & {
+  courseId: string;
+};
+
 export type ManagementResult = {
   success: boolean;
   message: string;
@@ -733,6 +737,110 @@ export async function createCourse(input: CourseCreationInput): Promise<Manageme
   return {
     success: true,
     message: `Course ${input.code} created successfully.`,
+  };
+}
+
+export async function updateCourse(input: CourseUpdateInput): Promise<ManagementResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const { error: courseError } = await supabase
+    .from('courses')
+    .update({
+      code: input.code,
+      title: input.title,
+      description: input.description,
+      lecturer_id: input.lecturerId,
+      lecturer_name: input.lecturerName,
+      department: input.department,
+      level: input.level,
+      color: input.color,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.courseId);
+
+  if (courseError) {
+    return {
+      success: false,
+      message: courseError.message,
+    };
+  }
+
+  const { data: existingSchedule } = await supabase
+    .from('course_schedules')
+    .select('id')
+    .eq('course_id', input.courseId)
+    .maybeSingle();
+
+  if (existingSchedule) {
+    const { error: scheduleError } = await supabase
+      .from('course_schedules')
+      .update({
+        day_of_week: input.dayOfWeek,
+        start_time: input.startTime,
+        end_time: input.endTime,
+        room: input.room,
+      })
+      .eq('course_id', input.courseId);
+
+    if (scheduleError) {
+      return {
+        success: false,
+        message: scheduleError.message,
+      };
+    }
+  } else {
+    const { error: scheduleError } = await supabase
+      .from('course_schedules')
+      .insert({
+        course_id: input.courseId,
+        day_of_week: input.dayOfWeek,
+        start_time: input.startTime,
+        end_time: input.endTime,
+        room: input.room,
+      });
+
+    if (scheduleError) {
+      return {
+        success: false,
+        message: scheduleError.message,
+      };
+    }
+  }
+
+  return {
+    success: true,
+    message: `Course ${input.code} updated successfully.`,
+  };
+}
+
+export async function deleteCourse(courseId: string): Promise<ManagementResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const { error } = await supabase
+    .from('courses')
+    .delete()
+    .eq('id', courseId);
+
+  if (error) {
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+
+  return {
+    success: true,
+    message: 'Course deleted successfully.',
   };
 }
 

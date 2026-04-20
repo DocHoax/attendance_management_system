@@ -58,6 +58,8 @@ import {
   getDepartmentDistribution, 
   getUserCounts, 
   removeStudentFromCourse,
+  deleteCourse,
+  updateCourse,
   subscribeToTableChanges 
 } from '@/services/universityService';
 import type { Course, Lecturer, Student } from '@/types';
@@ -76,6 +78,20 @@ type CourseFormState = {
   color: string;
 };
 
+const INITIAL_COURSE_FORM: CourseFormState = {
+  code: '',
+  title: '',
+  description: '',
+  lecturerId: '',
+  department: '',
+  level: '100',
+  dayOfWeek: 'Monday',
+  startTime: '09:00',
+  endTime: '10:00',
+  room: '',
+  color: '#3b82f6',
+};
+
 export function AdminDashboard() {
   const admin = useAdmin();
   const { activeSessions, attendanceRecords } = useAttendance();
@@ -89,21 +105,10 @@ export function AdminDashboard() {
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [enrollmentCourseId, setEnrollmentCourseId] = useState('');
   const [enrollmentStudentId, setEnrollmentStudentId] = useState('');
+  const [editingCourseId, setEditingCourseId] = useState('');
   const [isSavingCourse, setIsSavingCourse] = useState(false);
   const [isSavingEnrollment, setIsSavingEnrollment] = useState(false);
-  const [courseForm, setCourseForm] = useState<CourseFormState>({
-    code: '',
-    title: '',
-    description: '',
-    lecturerId: '',
-    department: '',
-    level: '100',
-    dayOfWeek: 'Monday',
-    startTime: '09:00',
-    endTime: '10:00',
-    room: '',
-    color: '#3b82f6',
-  });
+  const [courseForm, setCourseForm] = useState<CourseFormState>(INITIAL_COURSE_FORM);
   const [userCounts, setUserCounts] = useState({
     totalUsers: 0,
     totalStudents: 0,
@@ -293,7 +298,25 @@ export function AdminDashboard() {
     ? students.filter((student) => student.enrolledCourses.includes(selectedCourseId))
     : [];
 
-  const handleCreateCourse = async () => {
+  const loadCourseIntoForm = (course: Course) => {
+    setSelectedCourseId(course.id);
+    setEditingCourseId(course.id);
+    setCourseForm({
+      code: course.code,
+      title: course.title,
+      description: course.description,
+      lecturerId: course.lecturerId,
+      department: course.department,
+      level: String(course.level),
+      dayOfWeek: course.schedule.day,
+      startTime: course.schedule.startTime,
+      endTime: course.schedule.endTime,
+      room: course.schedule.room,
+      color: course.color,
+    });
+  };
+
+  const handleSubmitCourse = async () => {
     const lecturer = lecturers.find((item) => item.id === courseForm.lecturerId);
 
     if (!lecturer) {
@@ -307,7 +330,7 @@ export function AdminDashboard() {
     }
 
     setIsSavingCourse(true);
-    const result = await createCourse({
+    const payload = {
       code: courseForm.code.trim(),
       title: courseForm.title.trim(),
       description: courseForm.description.trim(),
@@ -320,7 +343,11 @@ export function AdminDashboard() {
       endTime: courseForm.endTime,
       room: courseForm.room.trim(),
       color: courseForm.color,
-    });
+    };
+
+    const result = editingCourseId
+      ? await updateCourse({ ...payload, courseId: editingCourseId })
+      : await createCourse(payload);
     setIsSavingCourse(false);
 
     if (!result.success) {
@@ -329,13 +356,33 @@ export function AdminDashboard() {
     }
 
     success(result.message);
-    setCourseForm((currentValue) => ({
-      ...currentValue,
-      code: '',
-      title: '',
-      description: '',
-      room: '',
-    }));
+    setEditingCourseId('');
+    setCourseForm(INITIAL_COURSE_FORM);
+    refreshManagementData();
+  };
+
+  const handleDeleteSelectedCourse = async () => {
+    if (!selectedCourse) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${selectedCourse.code}? This will remove the course and its enrollments.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    const result = await deleteCourse(selectedCourse.id);
+
+    if (!result.success) {
+      error(result.message);
+      return;
+    }
+
+    success(result.message);
+    setSelectedCourseId('');
+    setEditingCourseId('');
+    setCourseForm(INITIAL_COURSE_FORM);
     refreshManagementData();
   };
 
@@ -492,9 +539,25 @@ export function AdminDashboard() {
                 </div>
               </div>
 
-              <Button onClick={handleCreateCourse} disabled={isSavingCourse || lecturers.length === 0} className="btn-glow bg-gradient-to-r from-primary to-secondary">
+              {editingCourseId && (
+                <div className="rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+                  Editing {selectedCourse?.code || 'course'}.
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCourseId('');
+                      setCourseForm(INITIAL_COURSE_FORM);
+                    }}
+                    className="ml-3 underline underline-offset-4"
+                  >
+                    Cancel edit
+                  </button>
+                </div>
+              )}
+
+              <Button onClick={handleSubmitCourse} disabled={isSavingCourse || lecturers.length === 0} className="btn-glow bg-gradient-to-r from-primary to-secondary">
                 <Plus className="mr-2 h-4 w-4" />
-                {isSavingCourse ? 'Creating...' : 'Create Course'}
+                {isSavingCourse ? (editingCourseId ? 'Updating...' : 'Creating...') : editingCourseId ? 'Update Course' : 'Create Course'}
               </Button>
             </div>
 
@@ -569,6 +632,26 @@ export function AdminDashboard() {
                     <Badge className="bg-success/15 text-success border-success/30">
                       {selectedCourse.totalStudents} enrolled
                     </Badge>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-white/10"
+                      onClick={() => loadCourseIntoForm(selectedCourse)}
+                    >
+                      Load into form
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={handleDeleteSelectedCourse}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete course
+                    </Button>
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2">
