@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Users, 
@@ -13,16 +13,22 @@ import {
   Filter,
   Download,
   BarChart3,
+  BookOpen,
   GraduationCap,
   UserCircle,
-  Play
+  Play,
+  Plus,
+  UserPlus,
+  Trash2,
 } from 'lucide-react';
 import { useAdmin } from '@/hooks/useAuthHooks';
 import { useAttendance } from '@/hooks/useAttendance';
+import { useToast } from '@/hooks/useToast';
 import { StatCard } from '@/components/ui/StatCard';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Table, 
   TableBody, 
@@ -43,13 +49,61 @@ import {
   Pie,
   Cell
 } from 'recharts';
-import { getDepartmentDistribution, getUserCounts, subscribeToTableChanges } from '@/services/universityService';
+import { 
+  createCourse,
+  enrollStudentInCourse,
+  getAllCourses,
+  getAllLecturers,
+  getAllStudents,
+  getDepartmentDistribution, 
+  getUserCounts, 
+  removeStudentFromCourse,
+  subscribeToTableChanges 
+} from '@/services/universityService';
+import type { Course, Lecturer, Student } from '@/types';
+
+type CourseFormState = {
+  code: string;
+  title: string;
+  description: string;
+  lecturerId: string;
+  department: string;
+  level: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  color: string;
+};
 
 export function AdminDashboard() {
   const admin = useAdmin();
   const { activeSessions, attendanceRecords } = useAttendance();
+  const { success, error } = useToast();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [lecturers, setLecturers] = useState<Lecturer[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [enrollmentCourseId, setEnrollmentCourseId] = useState('');
+  const [enrollmentStudentId, setEnrollmentStudentId] = useState('');
+  const [isSavingCourse, setIsSavingCourse] = useState(false);
+  const [isSavingEnrollment, setIsSavingEnrollment] = useState(false);
+  const [courseForm, setCourseForm] = useState<CourseFormState>({
+    code: '',
+    title: '',
+    description: '',
+    lecturerId: '',
+    department: '',
+    level: '100',
+    dayOfWeek: 'Monday',
+    startTime: '09:00',
+    endTime: '10:00',
+    room: '',
+    color: '#3b82f6',
+  });
   const [userCounts, setUserCounts] = useState({
     totalUsers: 0,
     totalStudents: 0,
@@ -57,6 +111,28 @@ export function AdminDashboard() {
     totalAdmins: 0,
   });
   const [departmentData, setDepartmentData] = useState<Array<{ name: string; value: number; color: string }>>([]);
+
+  const refreshManagementData = useCallback(async () => {
+    const [nextCourses, nextLecturers, nextStudents] = await Promise.all([
+      getAllCourses(),
+      getAllLecturers(),
+      getAllStudents(),
+    ]);
+
+    setCourses(nextCourses);
+    setLecturers(nextLecturers);
+    setStudents(nextStudents);
+
+    setSelectedCourseId((currentValue) => currentValue || nextCourses[0]?.id || '');
+    setEnrollmentCourseId((currentValue) => currentValue || nextCourses[0]?.id || '');
+    setEnrollmentStudentId((currentValue) => currentValue || nextStudents[0]?.id || '');
+    setCourseForm((currentValue) => ({
+      ...currentValue,
+      lecturerId: currentValue.lecturerId || nextLecturers[0]?.id || '',
+      department: currentValue.department || nextLecturers[0]?.department || '',
+      room: currentValue.room || '',
+    }));
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -77,18 +153,24 @@ export function AdminDashboard() {
       });
     };
 
+    const refreshCatalog = () => {
+      refreshManagementData();
+    };
+
     refreshCounts();
     refreshDepartments();
-    const cleanup = subscribeToTableChanges(['profiles'], () => {
+    refreshCatalog();
+    const cleanup = subscribeToTableChanges(['profiles', 'courses', 'course_schedules', 'course_enrollments', 'student_profiles', 'lecturer_profiles'], () => {
       refreshCounts();
       refreshDepartments();
+      refreshCatalog();
     });
 
     return () => {
       isMounted = false;
       cleanup?.();
     };
-  }, []);
+  }, [refreshManagementData]);
 
   const weeklyData = useMemo(() => {
     const days = Array.from({ length: 5 }, (_, index) => {
@@ -125,9 +207,11 @@ export function AdminDashboard() {
   const filteredSessions = activeSessions.filter(session => {
     const matchesSearch = 
       session.courseCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      session.courseTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
       session.lecturerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       session.room.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+    const matchesStatus = !showActiveOnly || session.isActive;
+    return matchesSearch && matchesStatus;
   });
 
   const systemLogs = useMemo(() => {
@@ -156,6 +240,137 @@ export function AdminDashboard() {
       }));
   }, [activeSessions, attendanceRecords]);
 
+  const handleExportReport = () => {
+    const escapeCsv = (value: string | number | boolean | null | undefined) => {
+      const text = value == null ? '' : String(value);
+
+      if (/["]|,|\n/.test(text)) {
+        return `"${text.replaceAll('"', '""')}"`;
+      }
+
+      return text;
+    };
+
+    const rows = [
+      ['type', 'id', 'label', 'courseCode', 'person', 'date', 'time', 'status', 'details'].map(escapeCsv).join(','),
+      ...activeSessions.map((session) => [
+        'session',
+        session.id,
+        session.courseTitle,
+        session.courseCode,
+        session.lecturerName,
+        session.createdAt.split('T')[0],
+        new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        session.isActive ? 'active' : 'ended',
+        `${session.scannedStudents.length}/${session.totalStudents} scanned`,
+      ].map(escapeCsv).join(',')),
+      ...attendanceRecords.map((record) => [
+        'record',
+        record.id,
+        record.courseTitle,
+        record.courseCode,
+        record.studentName,
+        record.date,
+        record.time,
+        record.status,
+        record.verificationMode ?? 'qr',
+      ].map(escapeCsv).join(',')),
+    ];
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `attendance-report-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    success('Attendance report exported.');
+  };
+
+  const selectedCourse = courses.find((course) => course.id === selectedCourseId);
+  const selectedCourseStudents = selectedCourseId
+    ? students.filter((student) => student.enrolledCourses.includes(selectedCourseId))
+    : [];
+
+  const handleCreateCourse = async () => {
+    const lecturer = lecturers.find((item) => item.id === courseForm.lecturerId);
+
+    if (!lecturer) {
+      error('Select a lecturer before creating the course.');
+      return;
+    }
+
+    if (!courseForm.code.trim() || !courseForm.title.trim() || !courseForm.description.trim() || !courseForm.department.trim() || !courseForm.room.trim()) {
+      error('Fill in the course code, title, description, department, and room.');
+      return;
+    }
+
+    setIsSavingCourse(true);
+    const result = await createCourse({
+      code: courseForm.code.trim(),
+      title: courseForm.title.trim(),
+      description: courseForm.description.trim(),
+      lecturerId: lecturer.id,
+      lecturerName: lecturer.name,
+      department: courseForm.department.trim(),
+      level: Number.parseInt(courseForm.level, 10) || 100,
+      dayOfWeek: courseForm.dayOfWeek,
+      startTime: courseForm.startTime,
+      endTime: courseForm.endTime,
+      room: courseForm.room.trim(),
+      color: courseForm.color,
+    });
+    setIsSavingCourse(false);
+
+    if (!result.success) {
+      error(result.message);
+      return;
+    }
+
+    success(result.message);
+    setCourseForm((currentValue) => ({
+      ...currentValue,
+      code: '',
+      title: '',
+      description: '',
+      room: '',
+    }));
+    refreshManagementData();
+  };
+
+  const handleEnrollStudent = async () => {
+    if (!enrollmentCourseId || !enrollmentStudentId) {
+      error('Choose both a course and a student before enrolling.');
+      return;
+    }
+
+    setIsSavingEnrollment(true);
+    const result = await enrollStudentInCourse(enrollmentCourseId, enrollmentStudentId);
+    setIsSavingEnrollment(false);
+
+    if (!result.success) {
+      error(result.message);
+      return;
+    }
+
+    success(result.message);
+    setEnrollmentStudentId('');
+    refreshManagementData();
+  };
+
+  const handleRemoveEnrollment = async (courseId: string, studentId: string) => {
+    const result = await removeStudentFromCourse(courseId, studentId);
+
+    if (!result.success) {
+      error(result.message);
+      return;
+    }
+
+    success(result.message);
+    refreshManagementData();
+  };
+
   if (!admin) return null;
 
   return (
@@ -167,6 +382,257 @@ export function AdminDashboard() {
         className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
       >
         <div>
+
+        {/* Course Management */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.65 }}
+          className="space-y-6"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-primary" />
+                Course and Enrollment Management
+              </h3>
+              <p className="text-sm text-muted-foreground">Create courses, assign lecturers, and enroll students from the dashboard.</p>
+            </div>
+            <Badge className="bg-primary/15 text-primary border-primary/30">
+              {courses.length} courses, {students.length} students, {lecturers.length} lecturers
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="glass-card p-6 space-y-5">
+              <div>
+                <h4 className="text-base font-semibold text-white">Create Course</h4>
+                <p className="text-sm text-muted-foreground">Add a new course and schedule it in one step.</p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Course code</label>
+                  <Input value={courseForm.code} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, code: event.target.value }))} placeholder="CSC 401" className="bg-slate-800 border-slate-700 text-white" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Title</label>
+                  <Input value={courseForm.title} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, title: event.target.value }))} placeholder="Software Engineering" className="bg-slate-800 border-slate-700 text-white" />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">Description</label>
+                <Textarea value={courseForm.description} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, description: event.target.value }))} placeholder="Course overview and goals" className="min-h-24 bg-slate-800 border-slate-700 text-white" />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Lecturer</label>
+                  <select
+                    value={courseForm.lecturerId}
+                    onChange={(event) => {
+                      const nextLecturer = lecturers.find((item) => item.id === event.target.value);
+                      setCourseForm((currentValue) => ({
+                        ...currentValue,
+                        lecturerId: event.target.value,
+                        department: nextLecturer?.department || currentValue.department,
+                      }));
+                    }}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-sm text-white outline-none transition-colors focus:border-primary"
+                  >
+                    <option value="">Select lecturer</option>
+                    {lecturers.map((lecturer) => (
+                      <option key={lecturer.id} value={lecturer.id}>
+                        {lecturer.name} - {lecturer.department}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Department</label>
+                  <Input value={courseForm.department} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, department: event.target.value }))} placeholder="Computer Science" className="bg-slate-800 border-slate-700 text-white" />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Level</label>
+                  <Input value={courseForm.level} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, level: event.target.value }))} type="number" min="100" step="100" className="bg-slate-800 border-slate-700 text-white" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Day</label>
+                  <select value={courseForm.dayOfWeek} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, dayOfWeek: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-sm text-white outline-none transition-colors focus:border-primary">
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day) => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Start</label>
+                  <Input value={courseForm.startTime} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, startTime: event.target.value }))} type="time" className="bg-slate-800 border-slate-700 text-white" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">End</label>
+                  <Input value={courseForm.endTime} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, endTime: event.target.value }))} type="time" className="bg-slate-800 border-slate-700 text-white" />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Room</label>
+                  <Input value={courseForm.room} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, room: event.target.value }))} placeholder="Hall A" className="bg-slate-800 border-slate-700 text-white" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Color</label>
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5">
+                    <input type="color" value={courseForm.color} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, color: event.target.value }))} className="h-10 w-12 cursor-pointer rounded-lg border-0 bg-transparent p-0" />
+                    <Input value={courseForm.color} onChange={(event) => setCourseForm((currentValue) => ({ ...currentValue, color: event.target.value }))} className="border-0 bg-transparent p-0 text-white shadow-none focus-visible:ring-0" />
+                  </div>
+                </div>
+              </div>
+
+              <Button onClick={handleCreateCourse} disabled={isSavingCourse || lecturers.length === 0} className="btn-glow bg-gradient-to-r from-primary to-secondary">
+                <Plus className="mr-2 h-4 w-4" />
+                {isSavingCourse ? 'Creating...' : 'Create Course'}
+              </Button>
+            </div>
+
+            <div className="glass-card p-6 space-y-5">
+              <div>
+                <h4 className="text-base font-semibold text-white">Enroll Student</h4>
+                <p className="text-sm text-muted-foreground">Attach students to a course so attendance checks can work.</p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Course</label>
+                  <select value={enrollmentCourseId} onChange={(event) => setEnrollmentCourseId(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-sm text-white outline-none transition-colors focus:border-primary">
+                    <option value="">Select course</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.code} - {course.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">Student</label>
+                  <select value={enrollmentStudentId} onChange={(event) => setEnrollmentStudentId(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-sm text-white outline-none transition-colors focus:border-primary">
+                    <option value="">Select student</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.name} - {student.matricNumber}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-800/50 p-4">
+                <p className="text-sm text-muted-foreground">
+                  Students enrolled in a course will immediately appear in the attendance eligibility checks.
+                </p>
+              </div>
+
+              <Button onClick={handleEnrollStudent} disabled={isSavingEnrollment || courses.length === 0 || students.length === 0} variant="outline" className="border-white/10">
+                <UserPlus className="mr-2 h-4 w-4" />
+                {isSavingEnrollment ? 'Enrolling...' : 'Enroll Student'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="glass-card p-6 space-y-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h4 className="text-base font-semibold text-white">Current Course Rosters</h4>
+                <p className="text-sm text-muted-foreground">Choose a course to review or remove enrolled students.</p>
+              </div>
+              <select value={selectedCourseId} onChange={(event) => setSelectedCourseId(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-sm text-white outline-none transition-colors focus:border-primary md:w-80">
+                <option value="">Select course to review</option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.code} - {course.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedCourse ? (
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-3xl border border-white/10 bg-slate-800/50 p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h5 className="text-lg font-semibold text-white">{selectedCourse.code}</h5>
+                      <p className="text-sm text-muted-foreground">{selectedCourse.title}</p>
+                    </div>
+                    <Badge className="bg-success/15 text-success border-success/30">
+                      {selectedCourse.totalStudents} enrolled
+                    </Badge>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Lecturer</p>
+                      <p className="mt-1 text-sm font-medium text-white">{selectedCourse.lecturerName}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Schedule</p>
+                      <p className="mt-1 text-sm font-medium text-white">{selectedCourse.schedule.day} • {selectedCourse.schedule.startTime} - {selectedCourse.schedule.endTime}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {selectedCourseStudents.length > 0 ? (
+                      selectedCourseStudents.map((student) => (
+                        <div key={student.id} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/50 p-4 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="font-medium text-white">{student.name}</p>
+                            <p className="text-sm text-muted-foreground">{student.matricNumber} • {student.department}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" className="w-fit text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleRemoveEnrollment(selectedCourse.id, student.id)}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Remove
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-slate-900/30 p-6 text-center text-sm text-muted-foreground">
+                        No students are enrolled in this course yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/10 bg-slate-800/50 p-5 space-y-4">
+                  <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Course Summary</h5>
+                  <div className="space-y-3 text-sm text-muted-foreground">
+                    <div className="flex items-center justify-between rounded-2xl bg-slate-900/40 px-4 py-3">
+                      <span>Department</span>
+                      <span className="text-white">{selectedCourse.department}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl bg-slate-900/40 px-4 py-3">
+                      <span>Level</span>
+                      <span className="text-white">{selectedCourse.level}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl bg-slate-900/40 px-4 py-3">
+                      <span>Room</span>
+                      <span className="text-white">{selectedCourse.schedule.room}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl bg-slate-900/40 px-4 py-3">
+                      <span>Attendance link</span>
+                      <span className="text-white">Ready</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-dashed border-white/10 bg-slate-800/30 p-8 text-center text-sm text-muted-foreground">
+                Create a course first, then select it here to inspect the roster and remove enrollments.
+              </div>
+            )}
+          </div>
+        </motion.section>
           <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
           <p className="text-muted-foreground mt-1">
             Welcome back, {admin.name}
@@ -177,7 +643,7 @@ export function AdminDashboard() {
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-sm text-white">System Online</span>
           </div>
-          <Button variant="outline" size="sm" className="border-white/10">
+          <Button variant="outline" size="sm" className="border-white/10" onClick={handleExportReport}>
             <Download className="w-4 h-4 mr-2" />
             Export Report
           </Button>
@@ -348,7 +814,13 @@ export function AdminDashboard() {
                   className="pl-10 w-64 bg-slate-800 border-slate-700 text-white"
                 />
               </div>
-              <Button variant="outline" size="icon" className="border-white/10">
+              <Button
+                variant={showActiveOnly ? 'default' : 'outline'}
+                size="icon"
+                className={showActiveOnly ? 'bg-primary text-primary-foreground' : 'border-white/10'}
+                onClick={() => setShowActiveOnly((value) => !value)}
+                title={showActiveOnly ? 'Showing active sessions only' : 'Show only active sessions'}
+              >
                 <Filter className="w-4 h-4" />
               </Button>
             </div>

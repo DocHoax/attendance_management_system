@@ -113,7 +113,7 @@ function InfoCard({
 }
 
 export function Settings() {
-  const { user, updateUserProfile } = useAuth();
+  const { user, updateUserProfile, changePassword } = useAuth();
   const student = useStudent();
   const lecturer = useLecturer();
   const admin = useAdmin();
@@ -242,14 +242,29 @@ export function Settings() {
 
   const handleSave = async () => {
     if (newPassword || confirmPassword) {
-      if (!currentPassword || newPassword !== confirmPassword) {
-        error('Passwords do not match.');
+      if (!currentPassword) {
+        error('Enter your current password to update security settings.');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        error('New passwords do not match.');
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        error('New password must be at least 8 characters long.');
         return;
       }
     }
 
     if (user) {
-      await updateUserProfile({ name: displayName, email });
+      const updatedProfile = await updateUserProfile({ name: displayName, email });
+
+      if (!updatedProfile) {
+        error('Unable to save profile changes.');
+        return;
+      }
 
       window.localStorage.setItem(
         `${SETTINGS_STORAGE_PREFIX}:${user.id}`,
@@ -263,6 +278,15 @@ export function Settings() {
           cameraGuidance,
         })
       );
+
+      if (newPassword || confirmPassword) {
+        const passwordResult = await changePassword(currentPassword, newPassword);
+
+        if (!passwordResult.success) {
+          error(passwordResult.message);
+          return;
+        }
+      }
     }
 
     success('Settings saved successfully.');

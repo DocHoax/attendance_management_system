@@ -7,6 +7,7 @@ export interface AuthContextType {
   login: (email: string, _password: string, role: UserRole) => Promise<boolean>;
   logout: () => void;
   updateUserProfile: (updates: Partial<Pick<User, 'name' | 'email' | 'department' | 'avatar'>>) => Promise<User | null>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   isLoading: boolean;
   authError: string | null;
 }

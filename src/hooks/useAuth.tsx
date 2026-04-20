@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import type { User, UserRole } from '@/types';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
-import { authenticateUser, restoreAuthenticatedUser, signOutUser, updateProfileInDatabase } from '@/services/universityService';
+import { authenticateUser, changeUserPassword, restoreAuthenticatedUser, signOutUser, updateProfileInDatabase } from '@/services/universityService';
 import { AuthContext } from '@/hooks/auth-context';
 
 const AUTH_STORAGE_KEY = 'attendance-management-auth-user';
@@ -101,6 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return updatedUser;
   }, [user]);
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    if (!user) {
+      return {
+        success: false,
+        message: 'You must be signed in to change your password.',
+      };
+    }
+
+    return changeUserPassword(currentPassword, newPassword);
+  }, [user]);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -108,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       updateUserProfile,
+      changePassword,
       isLoading,
       authError
     }}>

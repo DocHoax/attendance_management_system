@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, 
@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/useToast';
 import { StatCard } from '@/components/ui/StatCard';
 import { QRCodeDisplay } from '@/components/ui/QRCodeDisplay';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { 
   Dialog, 
   DialogContent, 
@@ -51,6 +52,7 @@ export function LecturerDashboard() {
   const [bluetoothDeviceName, setBluetoothDeviceName] = useState('AttendX Beacon');
   const [currentSession, setCurrentSession] = useState<ActiveSession | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [showAttendanceHistory, setShowAttendanceHistory] = useState(false);
 
   useEffect(() => {
     if (!lecturer) return;
@@ -73,6 +75,19 @@ export function LecturerDashboard() {
       cleanup?.();
     };
   }, [lecturer]);
+
+  const lecturerCourseIds = useMemo(() => new Set(courses.map((course) => course.id)), [courses]);
+  const attendanceHistory = useMemo(() => {
+    return attendanceRecords
+      .filter((record) => lecturerCourseIds.has(record.courseId))
+      .slice()
+      .sort((left, right) => {
+        const leftTimestamp = new Date(`${left.date}T${left.time}:00`).getTime();
+        const rightTimestamp = new Date(`${right.date}T${right.time}:00`).getTime();
+        return rightTimestamp - leftTimestamp;
+      })
+      .slice(0, 12);
+  }, [attendanceRecords, lecturerCourseIds]);
 
   if (!lecturer) return null;
   
@@ -221,6 +236,7 @@ export function LecturerDashboard() {
             variant="outline"
             size="lg"
             className="border-white/10 hover:bg-white/5"
+            onClick={() => setShowAttendanceHistory(true)}
           >
             <History className="w-5 h-5 mr-2" />
             View Attendance History
@@ -322,6 +338,74 @@ export function LecturerDashboard() {
           })}
         </div>
       </div>
+
+      <Dialog open={showAttendanceHistory} onOpenChange={setShowAttendanceHistory}>
+        <DialogContent className="max-h-[85vh] overflow-hidden border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white">Attendance History</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Recent attendance activity across your assigned courses.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 overflow-y-auto pr-1">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-2xl border border-white/10 bg-slate-800/50 p-4">
+                <p className="text-xs text-muted-foreground">Records</p>
+                <p className="text-2xl font-bold text-white">{attendanceHistory.length}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-800/50 p-4">
+                <p className="text-xs text-muted-foreground">Present</p>
+                <p className="text-2xl font-bold text-success">
+                  {attendanceHistory.filter((record) => record.status === 'present').length}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-800/50 p-4">
+                <p className="text-xs text-muted-foreground">Late</p>
+                <p className="text-2xl font-bold text-warning">
+                  {attendanceHistory.filter((record) => record.status === 'late').length}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {attendanceHistory.length > 0 ? (
+                attendanceHistory.map((record) => (
+                  <div key={record.id} className="rounded-2xl border border-white/10 bg-slate-800/50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{record.courseCode}</p>
+                        <p className="text-sm text-muted-foreground">{record.courseTitle}</p>
+                      </div>
+                      <Badge
+                        className={
+                          record.status === 'present'
+                            ? 'bg-success/20 text-success border-success/30'
+                            : record.status === 'late'
+                              ? 'bg-warning/20 text-warning border-warning/30'
+                              : 'bg-destructive/20 text-destructive border-destructive/30'
+                        }
+                      >
+                        {record.status}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
+                      <p>{record.studentName}</p>
+                      <p>{record.date}</p>
+                      <p>{record.time}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-800/30 p-8 text-center text-sm text-muted-foreground">
+                  No attendance records available yet for your courses.
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Generate Code Dialog */}
       <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>

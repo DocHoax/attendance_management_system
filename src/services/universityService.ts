@@ -57,6 +57,26 @@ type CourseEnrollmentRow = {
   student_id: string;
 };
 
+export type CourseCreationInput = {
+  code: string;
+  title: string;
+  description: string;
+  lecturerId: string;
+  lecturerName: string;
+  department: string;
+  level: number;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  color: string;
+};
+
+export type ManagementResult = {
+  success: boolean;
+  message: string;
+};
+
 type AttendanceSessionRow = {
   id: string;
   course_id: string;
@@ -218,6 +238,17 @@ function mapRecordRow(row: AttendanceRecordRow): AttendanceRecord {
     bluetoothDeviceName: row.bluetooth_device_name ?? undefined,
     bluetoothDeviceId: row.bluetooth_device_id ?? undefined,
   };
+}
+
+function buildCourseMap(courses: CourseRow[], schedules: CourseScheduleRow[], enrollmentCounts: Map<string, number>): Course[] {
+  return courses.map((course) => {
+    const schedule = schedules.find((item) => item.course_id === course.id);
+
+    return {
+      ...mapCourseRow(course, schedule),
+      totalStudents: enrollmentCounts.get(course.id) ?? course.total_students,
+    };
+  });
 }
 
 function asMetadataRecord(metadata: SupabaseAuthUser['user_metadata']): Record<string, unknown> {
@@ -450,9 +481,68 @@ export async function signOutUser(): Promise<void> {
   await supabase.auth.signOut();
 }
 
+export async function changeUserPassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const { data } = await supabase.auth.getUser();
+  const authUser = data.user;
+
+  if (!authUser?.email) {
+    return {
+      success: false,
+      message: 'No authenticated user was found.',
+    };
+  }
+
+  const { error: reauthError } = await supabase.auth.signInWithPassword({
+    email: authUser.email,
+    password: currentPassword,
+  });
+
+  if (reauthError) {
+    return {
+      success: false,
+      message: 'Current password is incorrect.',
+    };
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+
+  if (updateError) {
+    return {
+      success: false,
+      message: updateError.message,
+    };
+  }
+
+  return {
+    success: true,
+    message: 'Password updated successfully.',
+  };
+}
+
 export async function updateProfileInDatabase(user: User, updates: Partial<Pick<User, 'name' | 'email' | 'department' | 'avatar'>>): Promise<User | null> {
   if (!isSupabaseConfigured || !supabase) {
     return { ...user, ...updates } as User;
+  }
+
+  const nextEmail = updates.email?.trim() || user.email;
+
+  if (nextEmail !== user.email) {
+    const { error: authError } = await supabase.auth.updateUser({
+      email: nextEmail,
+    });
+
+    if (authError) {
+      return null;
+    }
   }
 
   const { data: profile, error } = await supabase
@@ -460,7 +550,7 @@ export async function updateProfileInDatabase(user: User, updates: Partial<Pick<
     .upsert({
       id: user.id,
       full_name: updates.name,
-      email: updates.email,
+      email: nextEmail,
       department: updates.department,
       avatar_url: updates.avatar,
       role: user.role,
@@ -478,6 +568,259 @@ export async function updateProfileInDatabase(user: User, updates: Partial<Pick<
       : await supabase.from('admin_profiles').select('*').eq('user_id', user.id).maybeSingle();
 
   return mapProfileRow(profile as ProfileRow, roleSpecific.data as StudentProfileRow | LecturerProfileRow | AdminProfileRow | undefined);
+}
+
+export async function getAllCourses(): Promise<Course[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
+  }
+
+  const [coursesResult, schedulesResult, enrollmentsResult] = await Promise.all([
+    supabase.from('courses').select('*').order('created_at', { ascending: false }),
+    supabase.from('course_schedules').select('*'),
+    supabase.from('course_enrollments').select('course_id'),
+  ]);
+
+  const enrollmentCounts = new Map<string, number>();
+
+  (enrollmentsResult.data ?? []).forEach((row) => {
+    const enrollmentRow = row as CourseEnrollmentRow;
+    enrollmentCounts.set(enrollmentRow.course_id, (enrollmentCounts.get(enrollmentRow.course_id) ?? 0) + 1);
+  });
+
+  return buildCourseMap(
+    (coursesResult.data ?? []) as CourseRow[],
+    (schedulesResult.data ?? []) as CourseScheduleRow[],
+    enrollmentCounts,
+  );
+}
+
+export async function getAllStudents(): Promise<Student[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
+  }
+
+  const [{ data: profiles }, { data: details }, { data: enrollments }] = await Promise.all([
+    supabase.from('profiles').select('*').eq('role', 'student').order('full_name', { ascending: true }),
+    supabase.from('student_profiles').select('*'),
+    supabase.from('course_enrollments').select('student_id, course_id'),
+  ]);
+
+  const detailsByUser = new Map<string, StudentProfileRow>();
+  (details ?? []).forEach((row) => {
+    const studentRow = row as StudentProfileRow;
+    detailsByUser.set(studentRow.user_id, studentRow);
+  });
+
+  const enrolledCoursesByStudent = new Map<string, string[]>();
+  (enrollments ?? []).forEach((row) => {
+    const enrollmentRow = row as CourseEnrollmentRow;
+    const nextCourses = enrolledCoursesByStudent.get(enrollmentRow.student_id) ?? [];
+    nextCourses.push(enrollmentRow.course_id);
+    enrolledCoursesByStudent.set(enrollmentRow.student_id, nextCourses);
+  });
+
+  return (profiles ?? []).map((profile) => {
+    const profileRow = profile as ProfileRow;
+    const studentDetails = detailsByUser.get(profileRow.id);
+
+    return {
+      id: profileRow.id,
+      email: profileRow.email,
+      name: profileRow.full_name,
+      role: 'student',
+      department: profileRow.department,
+      avatar: profileRow.avatar_url ?? undefined,
+      matricNumber: studentDetails?.matric_number ?? '',
+      level: studentDetails?.level ?? 0,
+      enrolledCourses: enrolledCoursesByStudent.get(profileRow.id) ?? [],
+      attendanceRate: studentDetails?.attendance_rate ?? 0,
+    };
+  });
+}
+
+export async function getAllLecturers(): Promise<Lecturer[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
+  }
+
+  const [{ data: profiles }, { data: details }, { data: courses }] = await Promise.all([
+    supabase.from('profiles').select('*').eq('role', 'lecturer').order('full_name', { ascending: true }),
+    supabase.from('lecturer_profiles').select('*'),
+    supabase.from('courses').select('id, lecturer_id'),
+  ]);
+
+  const detailsByUser = new Map<string, LecturerProfileRow>();
+  (details ?? []).forEach((row) => {
+    const lecturerRow = row as LecturerProfileRow;
+    detailsByUser.set(lecturerRow.user_id, lecturerRow);
+  });
+
+  const coursesByLecturer = new Map<string, string[]>();
+  (courses ?? []).forEach((row) => {
+    const courseRow = row as { id: string; lecturer_id: string };
+    const nextCourses = coursesByLecturer.get(courseRow.lecturer_id) ?? [];
+    nextCourses.push(courseRow.id);
+    coursesByLecturer.set(courseRow.lecturer_id, nextCourses);
+  });
+
+  return (profiles ?? []).map((profile) => {
+    const profileRow = profile as ProfileRow;
+    const lecturerDetails = detailsByUser.get(profileRow.id);
+
+    return {
+      id: profileRow.id,
+      email: profileRow.email,
+      name: profileRow.full_name,
+      role: 'lecturer',
+      department: profileRow.department,
+      avatar: profileRow.avatar_url ?? undefined,
+      staffId: lecturerDetails?.staff_id ?? '',
+      assignedCourses: coursesByLecturer.get(profileRow.id) ?? [],
+    };
+  });
+}
+
+export async function createCourse(input: CourseCreationInput): Promise<ManagementResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const { data: course, error: courseError } = await supabase
+    .from('courses')
+    .insert({
+      code: input.code,
+      title: input.title,
+      description: input.description,
+      lecturer_id: input.lecturerId,
+      lecturer_name: input.lecturerName,
+      department: input.department,
+      level: input.level,
+      total_students: 0,
+      color: input.color,
+    })
+    .select('*')
+    .single();
+
+  if (courseError || !course) {
+    return {
+      success: false,
+      message: courseError?.message ?? 'Unable to create course.',
+    };
+  }
+
+  const { error: scheduleError } = await supabase
+    .from('course_schedules')
+    .insert({
+      course_id: (course as CourseRow).id,
+      day_of_week: input.dayOfWeek,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      room: input.room,
+    });
+
+  if (scheduleError) {
+    await supabase.from('courses').delete().eq('id', (course as CourseRow).id);
+    return {
+      success: false,
+      message: scheduleError.message,
+    };
+  }
+
+  return {
+    success: true,
+    message: `Course ${input.code} created successfully.`,
+  };
+}
+
+async function refreshCourseStudentCount(courseId: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const { count } = await supabase
+    .from('course_enrollments')
+    .select('*', { count: 'exact', head: true })
+    .eq('course_id', courseId);
+
+  await supabase
+    .from('courses')
+    .update({ total_students: count ?? 0, updated_at: new Date().toISOString() })
+    .eq('id', courseId);
+}
+
+export async function enrollStudentInCourse(courseId: string, studentId: string): Promise<ManagementResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const { data: existingEnrollment } = await supabase
+    .from('course_enrollments')
+    .select('course_id')
+    .eq('course_id', courseId)
+    .eq('student_id', studentId)
+    .maybeSingle();
+
+  if (existingEnrollment) {
+    return {
+      success: true,
+      message: 'Student is already enrolled in this course.',
+    };
+  }
+
+  const { error } = await supabase
+    .from('course_enrollments')
+    .insert({
+      course_id: courseId,
+      student_id: studentId,
+    });
+
+  if (error) {
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+
+  await refreshCourseStudentCount(courseId);
+
+  return {
+    success: true,
+    message: 'Student enrolled successfully.',
+  };
+}
+
+export async function removeStudentFromCourse(courseId: string, studentId: string): Promise<ManagementResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const { error } = await supabase
+    .from('course_enrollments')
+    .delete()
+    .eq('course_id', courseId)
+    .eq('student_id', studentId);
+
+  if (error) {
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+
+  await refreshCourseStudentCount(courseId);
+
+  return {
+    success: true,
+    message: 'Student removed from course.',
+  };
 }
 
 export async function loadAttendanceSnapshot(): Promise<{ activeSessions: ActiveSession[]; attendanceRecords: AttendanceRecord[] }> {
