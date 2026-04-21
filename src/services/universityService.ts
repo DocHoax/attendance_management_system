@@ -76,6 +76,20 @@ export type CourseUpdateInput = CourseCreationInput & {
   courseId: string;
 };
 
+type CourseImportRow = {
+  code: string;
+  title: string;
+  description: string;
+  lecturerIdentifier: string;
+  department: string;
+  level: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  color: string;
+};
+
 export type ManagementResult = {
   success: boolean;
   message: string;
@@ -740,6 +754,144 @@ export async function createCourse(input: CourseCreationInput): Promise<Manageme
   };
 }
 
+function parseCourseImportRow(line: string): CourseImportRow | null {
+  const parts = line.split('|').map((part) => part.trim());
+
+  if (parts.length < 10) {
+    return null;
+  }
+
+  const [code, title, description, lecturerIdentifier, department, level, dayOfWeek, startTime, endTime, room, color = '#3b82f6'] = parts;
+
+  if (!code || !title || !description || !lecturerIdentifier || !department || !level || !dayOfWeek || !startTime || !endTime || !room) {
+    return null;
+  }
+
+  return {
+    code,
+    title,
+    description,
+    lecturerIdentifier,
+    department,
+    level,
+    dayOfWeek,
+    startTime,
+    endTime,
+    room,
+    color,
+  };
+}
+
+function resolveLecturerIdentifier(lecturers: Lecturer[], identifier: string): Lecturer | undefined {
+  const normalizedIdentifier = identifier.trim().toLowerCase();
+
+  return lecturers.find((lecturer) => {
+    return (
+      lecturer.id.toLowerCase() === normalizedIdentifier ||
+      lecturer.email.toLowerCase() === normalizedIdentifier ||
+      lecturer.staffId.toLowerCase() === normalizedIdentifier ||
+      lecturer.name.toLowerCase() === normalizedIdentifier
+    );
+  });
+}
+
+export async function bulkCreateCoursesFromText(rawText: string): Promise<ManagementResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const rows = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (rows.length === 0) {
+    return {
+      success: false,
+      message: 'Paste at least one course row.',
+    };
+  }
+
+  const maybeHeader = rows[0].toLowerCase();
+  if (maybeHeader.includes('code') && maybeHeader.includes('title') && maybeHeader.includes('lecturer')) {
+    rows.shift();
+  }
+
+  if (rows.length === 0) {
+    return {
+      success: false,
+      message: 'No import rows were found after the header.',
+    };
+  }
+
+  const lecturers = await getAllLecturers();
+  const results: string[] = [];
+  let createdCount = 0;
+  let failedCount = 0;
+
+  for (const [index, line] of rows.entries()) {
+    const row = parseCourseImportRow(line);
+
+    if (!row) {
+      failedCount += 1;
+      results.push(`Row ${index + 1}: invalid format.`);
+      continue;
+    }
+
+    const lecturer = resolveLecturerIdentifier(lecturers, row.lecturerIdentifier);
+
+    if (!lecturer) {
+      failedCount += 1;
+      results.push(`Row ${index + 1}: lecturer "${row.lecturerIdentifier}" not found.`);
+      continue;
+    }
+
+    const result = await createCourse({
+      code: row.code,
+      title: row.title,
+      description: row.description,
+      lecturerId: lecturer.id,
+      lecturerName: lecturer.name,
+      department: row.department,
+      level: Number.parseInt(row.level, 10) || 100,
+      dayOfWeek: row.dayOfWeek,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      room: row.room,
+      color: row.color || '#3b82f6',
+    });
+
+    if (!result.success) {
+      failedCount += 1;
+      results.push(`Row ${index + 1}: ${result.message}`);
+      continue;
+    }
+
+    createdCount += 1;
+  }
+
+  if (createdCount === 0) {
+    return {
+      success: false,
+      message: results.slice(0, 3).join(' '),
+    };
+  }
+
+  const summary = [`${createdCount} course${createdCount === 1 ? '' : 's'} imported`];
+
+  if (failedCount > 0) {
+    summary.push(`${failedCount} row${failedCount === 1 ? '' : 's'} skipped`);
+  }
+
+  return {
+    success: true,
+    message: summary.join('. '),
+  };
+}
+
 export async function updateCourse(input: CourseUpdateInput): Promise<ManagementResult> {
   if (!isSupabaseConfigured || !supabase) {
     return {
@@ -928,6 +1080,118 @@ export async function removeStudentFromCourse(courseId: string, studentId: strin
   return {
     success: true,
     message: 'Student removed from course.',
+  };
+}
+
+export async function bulkEnrollStudentsByMatricNumbers(courseId: string, matricNumbers: string[]): Promise<ManagementResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      success: false,
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const normalizedMatricNumbers = Array.from(
+    new Set(
+      matricNumbers
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+  );
+
+  if (normalizedMatricNumbers.length === 0) {
+    return {
+      success: false,
+      message: 'Provide at least one matric number.',
+    };
+  }
+
+  const [{ data: profiles }, { data: studentProfiles }] = await Promise.all([
+    supabase.from('profiles').select('id, full_name, role, department, avatar_url, email').eq('role', 'student'),
+    supabase.from('student_profiles').select('user_id, matric_number'),
+  ]);
+
+  const studentIdByMatric = new Map<string, string>();
+
+  (studentProfiles ?? []).forEach((row) => {
+    const studentRow = row as StudentProfileRow;
+    studentIdByMatric.set(studentRow.matric_number.trim().toUpperCase(), studentRow.user_id);
+  });
+
+  const alreadyEnrolledIds = new Set<string>();
+  const { data: existingEnrollments } = await supabase
+    .from('course_enrollments')
+    .select('student_id')
+    .eq('course_id', courseId);
+
+  (existingEnrollments ?? []).forEach((row) => {
+    alreadyEnrolledIds.add((row as CourseEnrollmentRow).student_id);
+  });
+
+  const targetStudentIds: string[] = [];
+  const missingMatricNumbers: string[] = [];
+
+  normalizedMatricNumbers.forEach((matricNumber) => {
+    const studentId = studentIdByMatric.get(matricNumber.toUpperCase());
+
+    if (!studentId) {
+      missingMatricNumbers.push(matricNumber);
+      return;
+    }
+
+    if (!alreadyEnrolledIds.has(studentId)) {
+      targetStudentIds.push(studentId);
+    }
+  });
+
+  if (targetStudentIds.length === 0 && missingMatricNumbers.length === 0) {
+    return {
+      success: true,
+      message: 'All listed students are already enrolled in this course.',
+    };
+  }
+
+  if (targetStudentIds.length > 0) {
+    const { error } = await supabase
+      .from('course_enrollments')
+      .insert(
+        targetStudentIds.map((studentId) => ({
+          course_id: courseId,
+          student_id: studentId,
+        }))
+      );
+
+    if (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+
+    await refreshCourseStudentCount(courseId);
+  }
+
+  const enrolledCount = targetStudentIds.length;
+  const missingCount = missingMatricNumbers.length;
+  const alreadyListedCount = normalizedMatricNumbers.length - enrolledCount - missingCount;
+
+  const parts = [];
+
+  if (enrolledCount > 0) {
+    parts.push(`${enrolledCount} student${enrolledCount === 1 ? '' : 's'} enrolled`);
+  }
+
+  if (missingCount > 0) {
+    parts.push(`${missingCount} matric number${missingCount === 1 ? '' : 's'} not found`);
+  }
+
+  if (alreadyListedCount > 0) {
+    parts.push(`${alreadyListedCount} already enrolled`);
+  }
+
+  return {
+    success: true,
+    message: parts.join('. ') || 'Bulk enrollment completed.',
   };
 }
 

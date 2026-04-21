@@ -51,6 +51,8 @@ import {
 } from 'recharts';
 import { 
   createCourse,
+  bulkCreateCoursesFromText,
+  bulkEnrollStudentsByMatricNumbers,
   enrollStudentInCourse,
   getAllCourses,
   getAllLecturers,
@@ -105,9 +107,13 @@ export function AdminDashboard() {
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [enrollmentCourseId, setEnrollmentCourseId] = useState('');
   const [enrollmentStudentId, setEnrollmentStudentId] = useState('');
+  const [bulkEnrollmentInput, setBulkEnrollmentInput] = useState('');
+  const [bulkCourseImportInput, setBulkCourseImportInput] = useState('');
   const [editingCourseId, setEditingCourseId] = useState('');
   const [isSavingCourse, setIsSavingCourse] = useState(false);
   const [isSavingEnrollment, setIsSavingEnrollment] = useState(false);
+  const [isSavingBulkEnrollment, setIsSavingBulkEnrollment] = useState(false);
+  const [isSavingBulkCourseImport, setIsSavingBulkCourseImport] = useState(false);
   const [courseForm, setCourseForm] = useState<CourseFormState>(INITIAL_COURSE_FORM);
   const [userCounts, setUserCounts] = useState({
     totalUsers: 0,
@@ -297,6 +303,18 @@ export function AdminDashboard() {
   const selectedCourseStudents = selectedCourseId
     ? students.filter((student) => student.enrolledCourses.includes(selectedCourseId))
     : [];
+  const bulkMatricNumbers = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          bulkEnrollmentInput
+            .split(/[\s,;]+/)
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0)
+        )
+      ),
+    [bulkEnrollmentInput]
+  );
 
   const loadCourseIntoForm = (course: Course) => {
     setSelectedCourseId(course.id);
@@ -415,6 +433,51 @@ export function AdminDashboard() {
     }
 
     success(result.message);
+    refreshManagementData();
+  };
+
+  const handleBulkEnrollStudents = async () => {
+    if (!enrollmentCourseId) {
+      error('Choose a course before bulk enrolling students.');
+      return;
+    }
+
+    if (bulkMatricNumbers.length === 0) {
+      error('Paste one or more matric numbers first.');
+      return;
+    }
+
+    setIsSavingBulkEnrollment(true);
+    const result = await bulkEnrollStudentsByMatricNumbers(enrollmentCourseId, bulkMatricNumbers);
+    setIsSavingBulkEnrollment(false);
+
+    if (!result.success) {
+      error(result.message);
+      return;
+    }
+
+    success(result.message);
+    setBulkEnrollmentInput('');
+    refreshManagementData();
+  };
+
+  const handleBulkCourseImport = async () => {
+    if (!bulkCourseImportInput.trim()) {
+      error('Paste one or more course rows first.');
+      return;
+    }
+
+    setIsSavingBulkCourseImport(true);
+    const result = await bulkCreateCoursesFromText(bulkCourseImportInput);
+    setIsSavingBulkCourseImport(false);
+
+    if (!result.success) {
+      error(result.message);
+      return;
+    }
+
+    success(result.message);
+    setBulkCourseImportInput('');
     refreshManagementData();
   };
 
@@ -563,6 +626,41 @@ export function AdminDashboard() {
 
             <div className="glass-card p-6 space-y-5">
               <div>
+                <h4 className="text-base font-semibold text-white">Bulk Course Import</h4>
+                <p className="text-sm text-muted-foreground">Paste one course per line using pipe separators.</p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4 text-xs text-muted-foreground space-y-2">
+                <p className="text-white">Format</p>
+                <p>code|title|description|lecturer email or staff ID|department|level|day|start|end|room|color</p>
+                <p>Example: CSC 401|Software Engineering|Builds maintainable software|dr.adams@school.edu|Computer Science|400|Monday|09:00|11:00|Hall A|#3b82f6</p>
+              </div>
+
+              <Textarea
+                value={bulkCourseImportInput}
+                onChange={(event) => setBulkCourseImportInput(event.target.value)}
+                placeholder={`CSC 401|Software Engineering|Builds maintainable software|dr.adams@school.edu|Computer Science|400|Monday|09:00|11:00|Hall A|#3b82f6\nMTH 203|Linear Algebra|Matrices, vectors, and systems|staff-102|Mathematics|200|Tuesday|10:00|12:00|Room 3|#10b981`}
+                className="min-h-40 bg-slate-800 border-slate-700 text-white"
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>{bulkCourseImportInput.split(/\r?\n/).filter((line) => line.trim().length > 0).length} line{bulkCourseImportInput.split(/\r?\n/).filter((line) => line.trim().length > 0).length === 1 ? '' : 's'} queued</span>
+                <span>Lecturer identifiers can be email, staff ID, name, or profile ID.</span>
+              </div>
+
+              <Button
+                onClick={handleBulkCourseImport}
+                disabled={isSavingBulkCourseImport || lecturers.length === 0}
+                variant="outline"
+                className="border-white/10"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                {isSavingBulkCourseImport ? 'Importing...' : 'Import Courses'}
+              </Button>
+            </div>
+
+            <div className="glass-card p-6 space-y-5">
+              <div>
                 <h4 className="text-base font-semibold text-white">Enroll Student</h4>
                 <p className="text-sm text-muted-foreground">Attach students to a course so attendance checks can work.</p>
               </div>
@@ -602,6 +700,34 @@ export function AdminDashboard() {
                 <UserPlus className="mr-2 h-4 w-4" />
                 {isSavingEnrollment ? 'Enrolling...' : 'Enroll Student'}
               </Button>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4 space-y-3">
+                <div>
+                  <p className="font-medium text-white">Bulk enroll by matric number</p>
+                  <p className="text-sm text-muted-foreground">Paste one matric number per line, or separate them with commas.</p>
+                </div>
+
+                <Textarea
+                  value={bulkEnrollmentInput}
+                  onChange={(event) => setBulkEnrollmentInput(event.target.value)}
+                  placeholder={`MAT/20260001\nMAT/20260002\nMAT/20260003`}
+                  className="min-h-32 bg-slate-800 border-slate-700 text-white"
+                />
+
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <span>{bulkMatricNumbers.length} unique matric number{bulkMatricNumbers.length === 1 ? '' : 's'} queued</span>
+                  <span>Existing enrollments will be skipped automatically.</span>
+                </div>
+
+                <Button
+                  onClick={handleBulkEnrollStudents}
+                  disabled={isSavingBulkEnrollment || bulkMatricNumbers.length === 0 || courses.length === 0}
+                  className="w-full bg-gradient-to-r from-primary to-secondary"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  {isSavingBulkEnrollment ? 'Bulk enrolling...' : 'Bulk Enroll Students'}
+                </Button>
+              </div>
             </div>
           </div>
 
