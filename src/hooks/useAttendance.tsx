@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import type { ActiveSession, AttendanceRecord, ScanResult } from '@/types';
+import type { ActiveSession, AttendanceRecord, BluetoothVerificationContext, ScanResult } from '@/types';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import {
   createAttendanceSession,
@@ -61,11 +61,7 @@ interface AttendanceContextType {
   scanBarcode: (
     barcodeData: string,
     studentId: string,
-    bluetoothContext?: {
-      bluetoothVerified?: boolean;
-      bluetoothDeviceName?: string;
-      bluetoothDeviceId?: string;
-    }
+    bluetoothContext?: BluetoothVerificationContext
   ) => Promise<ScanResult>;
   getStudentAttendance: (studentId: string) => AttendanceRecord[];
   getCourseAttendance: (courseId: string) => AttendanceRecord[];
@@ -196,11 +192,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const scanBarcode = useCallback(async (
     barcodeData: string,
     studentId: string,
-    bluetoothContext?: {
-      bluetoothVerified?: boolean;
-      bluetoothDeviceName?: string;
-      bluetoothDeviceId?: string;
-    }
+    bluetoothContext?: BluetoothVerificationContext
   ): Promise<ScanResult> => {
     const session = activeSessions.find(s => s.barcodeData === barcodeData && s.isActive);
     

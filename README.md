@@ -1,6 +1,6 @@
 # Attendance Management System
 
-A role-based attendance tracking web app built with React, TypeScript, Vite, Tailwind CSS, and Supabase. The system connects to a live university attendance backend with QR code scanning, lecturer-generated sessions, admin analytics, persistent local state, and optional Bluetooth-style verification for stricter attendance enforcement.
+A role-based attendance tracking web app built with React, TypeScript, Vite, Tailwind CSS, and Supabase. The system connects to a live university attendance backend with QR code scanning, lecturer-generated sessions, admin analytics, persistent local state, Bluetooth-style verification, and a unified attendance history trail for reviewing QR and Bluetooth activity together.
 
 ## What the app does
 
@@ -40,6 +40,14 @@ The application is organized around three roles:
 - A session must be active and unexpired.
 - Duplicate scans are rejected.
 - Attendance records are created only after all validation passes.
+
+### Attendance modes and audit trail
+
+- QR attendance is handled through the shared QR scanner and attendance hook.
+- Bluetooth-required sessions gate scanning until proximity verification succeeds.
+- QR + Bluetooth sessions are recorded with a combined verification mode so the exact access path is visible later.
+- Admins can review Bluetooth verification attempts and the broader attendance history in one place.
+- The shared history helper in `src/lib/attendanceHistory.ts` merges QR attendance records and Bluetooth verification logs into a single timeline.
 
 ### Bluetooth-style attendance enforcement
 
@@ -161,6 +169,7 @@ npm run preview
 - `src/components/layout/` - app layout and sidebar navigation.
 - `src/components/ui/` - reusable UI components and attendance widgets.
 - `src/hooks/` - auth, attendance, Bluetooth, and toast logic.
+- `src/lib/` - shared attendance helpers and utility functions.
 - `supabase/` - database schema, realtime publication setup, and future seed files.
 - `src/types/` - shared TypeScript models.
 

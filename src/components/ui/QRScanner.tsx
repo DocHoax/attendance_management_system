@@ -3,28 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Bluetooth, X, Camera, ScanLine, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { ScanResult } from '@/types';
+import type { BluetoothSessionConfig, BluetoothVerificationContext, ScanResult } from '@/types';
 import { useBluetoothProximity } from '@/hooks/useBluetoothProximity';
 import { recordBluetoothVerificationAttempt } from '@/services/universityService';
-
-interface BluetoothSessionConfig {
-  sessionId?: string;
-  requiresBluetooth?: boolean;
-  bluetoothDeviceName?: string;
-  bluetoothServiceUuid?: string;
-  courseTitle?: string;
-}
 
 interface QRScannerProps {
   bluetoothSession?: BluetoothSessionConfig | null;
   studentId?: string;
   onScan: (
     data: string,
-    context?: {
-      bluetoothVerified?: boolean;
-      bluetoothDeviceName?: string;
-      bluetoothDeviceId?: string;
-    }
+    context?: BluetoothVerificationContext
   ) => ScanResult | Promise<ScanResult>;
   onClose: () => void;
 }

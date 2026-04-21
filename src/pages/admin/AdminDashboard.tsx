@@ -68,6 +68,7 @@ import {
   subscribeToTableChanges 
 } from '@/services/universityService';
 import type { BluetoothVerificationLog, Course, Lecturer, Student } from '@/services/universityService';
+import { buildAttendanceHistoryEntries, type AttendanceHistoryMode } from '@/lib/attendanceHistory';
 
 type CourseFormState = {
   code: string;
@@ -143,6 +144,8 @@ export function AdminDashboard() {
   const [bluetoothSearchQuery, setBluetoothSearchQuery] = useState('');
   const [bluetoothStatusFilter, setBluetoothStatusFilter] = useState<'all' | 'success' | 'failed'>('all');
   const [selectedBluetoothLog, setSelectedBluetoothLog] = useState<BluetoothVerificationLog | null>(null);
+  const [attendanceHistorySearch, setAttendanceHistorySearch] = useState('');
+  const [attendanceHistoryMode, setAttendanceHistoryMode] = useState<'all' | AttendanceHistoryMode>('all');
   const [courseForm, setCourseForm] = useState<CourseFormState>(INITIAL_COURSE_FORM);
   const [userCounts, setUserCounts] = useState({
     totalUsers: 0,
@@ -290,6 +293,36 @@ export function AdminDashboard() {
       return matchesQuery && matchesStatus;
     });
   }, [bluetoothLogs, bluetoothSearchQuery, bluetoothStatusFilter]);
+
+  const attendanceHistoryEntries = useMemo(
+    () => buildAttendanceHistoryEntries(attendanceRecords, bluetoothLogs),
+    [attendanceRecords, bluetoothLogs],
+  );
+
+  const filteredAttendanceHistory = useMemo(() => {
+    const query = attendanceHistorySearch.trim().toLowerCase();
+
+    return attendanceHistoryEntries.filter((entry) => {
+      const searchTarget = [
+        entry.title,
+        entry.subtitle,
+        entry.studentLabel,
+        entry.sessionLabel,
+        entry.deviceLabel,
+        entry.reason,
+        entry.mode,
+        entry.kind,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const matchesQuery = query.length === 0 || searchTarget.includes(query);
+      const matchesMode = attendanceHistoryMode === 'all' || entry.mode === attendanceHistoryMode;
+
+      return matchesQuery && matchesMode;
+    });
+  }, [attendanceHistoryEntries, attendanceHistoryMode, attendanceHistorySearch]);
 
   const systemLogs = useMemo(() => {
     const sessionLogs = activeSessions.map((session) => ({
@@ -1495,6 +1528,118 @@ export function AdminDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Attendance History */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.7 }}
+        className="glass-card p-6"
+      >
+        <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Clock className="w-5 h-5 text-secondary" />
+              Attendance History
+            </h3>
+            <p className="text-sm text-muted-foreground">One timeline for QR scans, QR + Bluetooth sessions, and Bluetooth verification checks.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-white">
+              {filteredAttendanceHistory.length}/{attendanceHistoryEntries.length || 0} shown
+            </span>
+            <span className="rounded-full bg-success/15 px-2.5 py-1 text-success">
+              {attendanceHistoryEntries.filter((entry) => entry.success).length} successful
+            </span>
+            <span className="rounded-full bg-destructive/15 px-2.5 py-1 text-destructive">
+              {attendanceHistoryEntries.filter((entry) => !entry.success).length} flagged
+            </span>
+          </div>
+        </div>
+
+        <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_220px]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={attendanceHistorySearch}
+              onChange={(event) => setAttendanceHistorySearch(event.target.value)}
+              placeholder="Search student, course, session, device, or note"
+              className="pl-10 bg-slate-800 border-slate-700 text-white"
+            />
+          </div>
+          <div className="relative">
+            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <select
+              value={attendanceHistoryMode}
+              onChange={(event) => setAttendanceHistoryMode(event.target.value as 'all' | AttendanceHistoryMode)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-800 py-3 pl-10 pr-3 text-sm text-white outline-none transition-colors focus:border-primary"
+            >
+              <option value="all">All modes</option>
+              <option value="qr">QR only</option>
+              <option value="bluetooth-qr">QR + Bluetooth</option>
+              <option value="bluetooth-proximity">Bluetooth checks</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {filteredAttendanceHistory.length > 0 ? (
+            filteredAttendanceHistory.map((entry) => (
+              <div key={entry.id} className="rounded-2xl border border-white/10 bg-slate-800/50 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full ${entry.success ? 'bg-success/20' : 'bg-destructive/20'}`}>
+                      {entry.success ? (
+                        <CheckCircle className="h-4 w-4 text-success" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-destructive" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">{entry.title}</p>
+                      <p className="text-xs text-muted-foreground">{entry.subtitle}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                    <Badge variant="secondary" className="border-white/10 bg-slate-900/60 text-muted-foreground">
+                      {entry.kind === 'attendance' ? 'Attendance record' : 'Verification log'}
+                    </Badge>
+                    <Badge className={entry.success ? 'border-success/30 bg-success/15 text-success' : 'border-destructive/30 bg-destructive/15 text-destructive'}>
+                      {entry.mode}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-slate-900/40 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Student</p>
+                    <p className="mt-1 text-white">{entry.studentLabel}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-slate-900/40 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Session</p>
+                    <p className="mt-1 text-white">{entry.sessionLabel}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-slate-900/40 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Time</p>
+                    <p className="mt-1 text-white">{new Date(entry.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                </div>
+
+                {(entry.deviceLabel || entry.reason) && (
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {entry.deviceLabel && <span className="rounded-full bg-white/5 px-2.5 py-1 text-white">Device: {entry.deviceLabel}</span>}
+                    {entry.reason && <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-destructive">{entry.reason}</span>}
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-slate-800/30 p-8 text-center text-sm text-muted-foreground">
+              No history entries match the current search.
+            </div>
+          )}
+        </div>
+      </motion.div>
 
       {/* System Logs */}
       <motion.div
