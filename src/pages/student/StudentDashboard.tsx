@@ -315,11 +315,13 @@ export function StudentDashboard() {
       {showScanner && (
         <QRScanner
           bluetoothSession={selectedActiveSession?.requiresBluetooth ? {
+            sessionId: selectedActiveSession.id,
             requiresBluetooth: true,
             bluetoothDeviceName: selectedActiveSession.bluetoothDeviceName,
             bluetoothServiceUuid: selectedActiveSession.bluetoothServiceUuid,
             courseTitle: selectedActiveSession.courseTitle,
           } : null}
+          studentId={student.id}
           onScan={handleScan}
           onClose={() => {
             setShowScanner(false);

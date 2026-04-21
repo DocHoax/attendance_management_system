@@ -5,8 +5,10 @@ import { Bluetooth, X, Camera, ScanLine, CheckCircle, AlertCircle } from 'lucide
 import { Button } from '@/components/ui/button';
 import type { ScanResult } from '@/types';
 import { useBluetoothProximity } from '@/hooks/useBluetoothProximity';
+import { recordBluetoothVerificationAttempt } from '@/services/universityService';
 
 interface BluetoothSessionConfig {
+  sessionId?: string;
   requiresBluetooth?: boolean;
   bluetoothDeviceName?: string;
   bluetoothServiceUuid?: string;
@@ -15,6 +17,7 @@ interface BluetoothSessionConfig {
 
 interface QRScannerProps {
   bluetoothSession?: BluetoothSessionConfig | null;
+  studentId?: string;
   onScan: (
     data: string,
     context?: {
@@ -120,6 +123,17 @@ export function QRScanner({ bluetoothSession, onScan, onClose }: QRScannerProps)
     } else {
       setIsBluetoothVerified(false);
       setBluetoothMessage(result.message);
+    }
+
+    if (bluetoothSession.sessionId && studentId) {
+      void recordBluetoothVerificationAttempt({
+        sessionId: bluetoothSession.sessionId,
+        studentId,
+        success: result.success,
+        deviceName: result.deviceName,
+        deviceId: result.deviceId,
+        reason: result.message,
+      });
     }
 
     setIsBluetoothVerifying(false);

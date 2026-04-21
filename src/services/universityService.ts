@@ -95,6 +95,15 @@ export type ManagementResult = {
   message: string;
 };
 
+export type BluetoothVerificationAttempt = {
+  sessionId: string;
+  studentId: string;
+  success: boolean;
+  deviceName?: string;
+  deviceId?: string;
+  reason?: string;
+};
+
 type AttendanceSessionRow = {
   id: string;
   course_id: string;
@@ -994,6 +1003,19 @@ export async function deleteCourse(courseId: string): Promise<ManagementResult> 
     success: true,
     message: 'Course deleted successfully.',
   };
+}
+
+export async function recordBluetoothVerificationAttempt(attempt: BluetoothVerificationAttempt): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  await supabase.from('bluetooth_verifications').insert({
+    session_id: attempt.sessionId,
+    student_id: attempt.studentId,
+    device_name: attempt.deviceName ?? null,
+    device_id: attempt.deviceId ?? null,
+    success: attempt.success,
+    reason: attempt.reason ?? null,
+  });
 }
 
 async function refreshCourseStudentCount(courseId: string): Promise<void> {
