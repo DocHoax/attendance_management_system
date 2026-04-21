@@ -104,6 +104,29 @@ export type BluetoothVerificationAttempt = {
   reason?: string;
 };
 
+export type BluetoothVerificationLog = {
+  id: string;
+  sessionId: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  studentMatric?: string;
+  studentDepartment?: string;
+  sessionCourseCode?: string;
+  sessionCourseTitle?: string;
+  sessionLecturerName?: string;
+  sessionRoom?: string;
+  sessionIsActive?: boolean;
+  sessionRequiresBluetooth?: boolean;
+  sessionCreatedAt?: string;
+  sessionExpiresAt?: string;
+  deviceName?: string;
+  deviceId?: string;
+  success: boolean;
+  reason?: string;
+  verifiedAt: string;
+};
+
 type AttendanceSessionRow = {
   id: string;
   course_id: string;
@@ -141,6 +164,41 @@ type AttendanceRecordRow = {
   bluetooth_device_name: string | null;
   bluetooth_device_id: string | null;
   created_at: string;
+};
+
+type BluetoothVerificationRow = {
+  id: string;
+  session_id: string;
+  student_id: string;
+  device_name: string | null;
+  device_id: string | null;
+  success: boolean;
+  reason: string | null;
+  verified_at: string;
+};
+
+type BluetoothVerificationProfileRow = {
+  id: string;
+  email: string;
+  full_name: string;
+  department: string;
+};
+
+type BluetoothVerificationStudentRow = {
+  user_id: string;
+  matric_number: string;
+};
+
+type BluetoothVerificationSessionRow = {
+  id: string;
+  course_code: string;
+  course_title: string;
+  lecturer_name: string;
+  room: string;
+  is_active: boolean;
+  requires_bluetooth: boolean;
+  created_at: string;
+  expires_at: string;
 };
 
 type SupabaseAuthUser = {
@@ -1015,6 +1073,76 @@ export async function recordBluetoothVerificationAttempt(attempt: BluetoothVerif
     device_id: attempt.deviceId ?? null,
     success: attempt.success,
     reason: attempt.reason ?? null,
+  });
+}
+
+export async function getBluetoothVerificationLogs(limit = 10): Promise<BluetoothVerificationLog[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
+  }
+
+  const { data } = await supabase
+    .from('bluetooth_verifications')
+    .select('*')
+    .order('verified_at', { ascending: false })
+    .limit(limit);
+
+  const logRows = (data ?? []).map((row) => row as BluetoothVerificationRow);
+  const studentIds = Array.from(new Set(logRows.map((row) => row.student_id)));
+  const sessionIds = Array.from(new Set(logRows.map((row) => row.session_id)));
+
+  const [profileResult, studentProfileResult, sessionResult] = await Promise.all([
+    studentIds.length > 0
+      ? supabase.from('profiles').select('id,email,full_name,department').in('id', studentIds)
+      : Promise.resolve({ data: [] as BluetoothVerificationProfileRow[] }),
+    studentIds.length > 0
+      ? supabase.from('student_profiles').select('user_id,matric_number').in('user_id', studentIds)
+      : Promise.resolve({ data: [] as BluetoothVerificationStudentRow[] }),
+    sessionIds.length > 0
+      ? supabase.from('attendance_sessions').select('id,course_code,course_title,lecturer_name,room,is_active,requires_bluetooth,created_at,expires_at').in('id', sessionIds)
+      : Promise.resolve({ data: [] as BluetoothVerificationSessionRow[] }),
+  ]);
+
+  const profileMap = new Map((profileResult.data ?? []).map((row) => {
+    const profileRow = row as BluetoothVerificationProfileRow;
+    return [profileRow.id, profileRow];
+  }));
+  const studentProfileMap = new Map((studentProfileResult.data ?? []).map((row) => {
+    const studentRow = row as BluetoothVerificationStudentRow;
+    return [studentRow.user_id, studentRow];
+  }));
+  const sessionMap = new Map((sessionResult.data ?? []).map((row) => {
+    const sessionRow = row as BluetoothVerificationSessionRow;
+    return [sessionRow.id, sessionRow];
+  }));
+
+  return logRows.map((logRow) => {
+    const profileRow = profileMap.get(logRow.student_id);
+    const studentRow = studentProfileMap.get(logRow.student_id);
+    const sessionRow = sessionMap.get(logRow.session_id);
+
+    return {
+      id: logRow.id,
+      sessionId: logRow.session_id,
+      studentId: logRow.student_id,
+      studentName: profileRow?.full_name,
+      studentEmail: profileRow?.email,
+      studentDepartment: profileRow?.department,
+      studentMatric: studentRow?.matric_number,
+      sessionCourseCode: sessionRow?.course_code,
+      sessionCourseTitle: sessionRow?.course_title,
+      sessionLecturerName: sessionRow?.lecturer_name,
+      sessionRoom: sessionRow?.room,
+      sessionIsActive: sessionRow?.is_active,
+      sessionRequiresBluetooth: sessionRow?.requires_bluetooth,
+      sessionCreatedAt: sessionRow?.created_at,
+      sessionExpiresAt: sessionRow?.expires_at,
+      deviceName: logRow.device_name ?? undefined,
+      deviceId: logRow.device_id ?? undefined,
+      success: logRow.success,
+      reason: logRow.reason ?? undefined,
+      verifiedAt: logRow.verified_at,
+    };
   });
 }
 

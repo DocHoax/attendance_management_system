@@ -9,6 +9,7 @@ import {
   MapPin,
   CheckCircle,
   AlertCircle,
+  Bluetooth,
   Search,
   Filter,
   Download,
@@ -29,6 +30,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Table, 
   TableBody, 
@@ -53,6 +55,7 @@ import {
   createCourse,
   bulkCreateCoursesFromText,
   bulkEnrollStudentsByMatricNumbers,
+  getBluetoothVerificationLogs,
   enrollStudentInCourse,
   getAllCourses,
   getAllLecturers,
@@ -64,7 +67,7 @@ import {
   updateCourse,
   subscribeToTableChanges 
 } from '@/services/universityService';
-import type { Course, Lecturer, Student } from '@/types';
+import type { BluetoothVerificationLog, Course, Lecturer, Student } from '@/services/universityService';
 
 type CourseFormState = {
   code: string;
@@ -136,6 +139,10 @@ export function AdminDashboard() {
   const [isSavingEnrollment, setIsSavingEnrollment] = useState(false);
   const [isSavingBulkEnrollment, setIsSavingBulkEnrollment] = useState(false);
   const [isSavingBulkCourseImport, setIsSavingBulkCourseImport] = useState(false);
+  const [bluetoothLogs, setBluetoothLogs] = useState<BluetoothVerificationLog[]>([]);
+  const [bluetoothSearchQuery, setBluetoothSearchQuery] = useState('');
+  const [bluetoothStatusFilter, setBluetoothStatusFilter] = useState<'all' | 'success' | 'failed'>('all');
+  const [selectedBluetoothLog, setSelectedBluetoothLog] = useState<BluetoothVerificationLog | null>(null);
   const [courseForm, setCourseForm] = useState<CourseFormState>(INITIAL_COURSE_FORM);
   const [userCounts, setUserCounts] = useState({
     totalUsers: 0,
@@ -167,6 +174,11 @@ export function AdminDashboard() {
     }));
   }, []);
 
+  const refreshBluetoothLogs = useCallback(async () => {
+    const nextLogs = await getBluetoothVerificationLogs(8);
+    setBluetoothLogs(nextLogs);
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -193,17 +205,19 @@ export function AdminDashboard() {
     refreshCounts();
     refreshDepartments();
     refreshCatalog();
-    const cleanup = subscribeToTableChanges(['profiles', 'courses', 'course_schedules', 'course_enrollments', 'student_profiles', 'lecturer_profiles'], () => {
+    void refreshBluetoothLogs();
+    const cleanup = subscribeToTableChanges(['profiles', 'courses', 'course_schedules', 'course_enrollments', 'student_profiles', 'lecturer_profiles', 'bluetooth_verifications'], () => {
       refreshCounts();
       refreshDepartments();
       refreshCatalog();
+      void refreshBluetoothLogs();
     });
 
     return () => {
       isMounted = false;
       cleanup?.();
     };
-  }, [refreshManagementData]);
+  }, [refreshBluetoothLogs, refreshManagementData]);
 
   const weeklyData = useMemo(() => {
     const days = Array.from({ length: 5 }, (_, index) => {
@@ -246,6 +260,36 @@ export function AdminDashboard() {
     const matchesStatus = !showActiveOnly || session.isActive;
     return matchesSearch && matchesStatus;
   });
+
+  const filteredBluetoothLogs = useMemo(() => {
+    const query = bluetoothSearchQuery.trim().toLowerCase();
+
+    return bluetoothLogs.filter((log) => {
+      const searchTarget = [
+        log.studentName,
+        log.studentEmail,
+        log.studentMatric,
+        log.studentDepartment,
+        log.studentId,
+        log.sessionCourseCode,
+        log.sessionCourseTitle,
+        log.sessionLecturerName,
+        log.sessionRoom,
+        log.sessionId,
+        log.deviceName,
+        log.deviceId,
+        log.reason,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const matchesQuery = query.length === 0 || searchTarget.includes(query);
+      const matchesStatus = bluetoothStatusFilter === 'all' || (bluetoothStatusFilter === 'success' ? log.success : !log.success);
+
+      return matchesQuery && matchesStatus;
+    });
+  }, [bluetoothLogs, bluetoothSearchQuery, bluetoothStatusFilter]);
 
   const systemLogs = useMemo(() => {
     const sessionLogs = activeSessions.map((session) => ({
@@ -1294,6 +1338,163 @@ export function AdminDashboard() {
           </Table>
         </div>
       </motion.div>
+
+      {/* Bluetooth Verification Logs */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.65 }}
+        className="glass-card p-6"
+      >
+        <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Bluetooth className="w-5 h-5 text-primary" />
+              Bluetooth Verification Audit
+            </h3>
+            <p className="text-sm text-muted-foreground">Search by student, session, device, or reason and open any entry for full context.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full bg-success/15 px-2.5 py-1 text-success">
+              {bluetoothLogs.filter((log) => log.success).length} success
+            </span>
+            <span className="rounded-full bg-destructive/15 px-2.5 py-1 text-destructive">
+              {bluetoothLogs.filter((log) => !log.success).length} failed
+            </span>
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-white">
+              {filteredBluetoothLogs.length}/{bluetoothLogs.length || 0} shown
+            </span>
+          </div>
+        </div>
+
+        <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_220px]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={bluetoothSearchQuery}
+              onChange={(event) => setBluetoothSearchQuery(event.target.value)}
+              placeholder="Search student, session, device, or reason"
+              className="pl-10 bg-slate-800 border-slate-700 text-white"
+            />
+          </div>
+          <div className="relative">
+            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <select
+              value={bluetoothStatusFilter}
+              onChange={(event) => setBluetoothStatusFilter(event.target.value as 'all' | 'success' | 'failed')}
+              className="w-full rounded-xl border border-slate-700 bg-slate-800 py-3 pl-10 pr-3 text-sm text-white outline-none transition-colors focus:border-primary"
+            >
+              <option value="all">All results</option>
+              <option value="success">Success only</option>
+              <option value="failed">Failed only</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {filteredBluetoothLogs.length > 0 ? (
+            filteredBluetoothLogs.map((log) => (
+              <button
+                key={log.id}
+                type="button"
+                onClick={() => setSelectedBluetoothLog(log)}
+                className="w-full rounded-2xl border border-white/10 bg-slate-800/50 p-4 text-left transition-all hover:border-primary/40 hover:bg-slate-800/70"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full ${log.success ? 'bg-success/20' : 'bg-destructive/20'}`}>
+                      {log.success ? (
+                        <CheckCircle className="h-4 w-4 text-success" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-destructive" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">
+                        {log.studentName || log.studentMatric || log.studentEmail || log.studentId}
+                        <span className="ml-2 text-xs text-muted-foreground">{log.success ? 'Bluetooth verified' : 'Bluetooth verification failed'}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {log.sessionCourseCode || 'Unknown session'}{log.sessionCourseTitle ? ` • ${log.sessionCourseTitle}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-1 text-xs text-muted-foreground md:text-right">
+                    <p>{log.deviceName || 'Unknown device'}{log.deviceId ? ` • ${log.deviceId}` : ''}</p>
+                    <p>{new Date(log.verifiedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    <p>{log.sessionRoom || 'Unknown room'}{log.sessionLecturerName ? ` • ${log.sessionLecturerName}` : ''}</p>
+                  </div>
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-slate-800/30 p-8 text-center text-sm text-muted-foreground">
+              {bluetoothLogs.length > 0 ? 'No Bluetooth verification attempts match the current search.' : 'No Bluetooth verification attempts recorded yet.'}
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      <Dialog open={Boolean(selectedBluetoothLog)} onOpenChange={(open) => !open && setSelectedBluetoothLog(null)}>
+        <DialogContent className="max-w-2xl border border-white/10 bg-slate-950 text-white shadow-2xl">
+          {selectedBluetoothLog && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-white">
+                  <Bluetooth className="h-5 w-5 text-primary" />
+                  Bluetooth Verification Details
+                </DialogTitle>
+                <DialogDescription className="text-muted-foreground">
+                  Review the student, session, and device context for this verification attempt.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Student</h4>
+                    <Badge className={selectedBluetoothLog.success ? 'bg-success/15 text-success border-success/30' : 'bg-destructive/15 text-destructive border-destructive/30'}>
+                      {selectedBluetoothLog.success ? 'Verified' : 'Failed'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p className="text-white">{selectedBluetoothLog.studentName || 'Unknown student'}</p>
+                    <p>{selectedBluetoothLog.studentMatric || 'No matric number available'}</p>
+                    <p>{selectedBluetoothLog.studentEmail || 'No email available'}</p>
+                    <p>{selectedBluetoothLog.studentDepartment || 'No department available'}</p>
+                    <p>Student ID: {selectedBluetoothLog.studentId}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 space-y-3">
+                  <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Session</h4>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p className="text-white">{selectedBluetoothLog.sessionCourseCode || 'Unknown course'}{selectedBluetoothLog.sessionCourseTitle ? ` • ${selectedBluetoothLog.sessionCourseTitle}` : ''}</p>
+                    <p>{selectedBluetoothLog.sessionLecturerName || 'Unknown lecturer'}</p>
+                    <p>{selectedBluetoothLog.sessionRoom || 'Unknown room'}</p>
+                    <p>Session ID: {selectedBluetoothLog.sessionId}</p>
+                    <p>{selectedBluetoothLog.sessionIsActive ? 'Session still active' : 'Session closed'}</p>
+                    <p>{selectedBluetoothLog.sessionRequiresBluetooth ? 'Bluetooth verification required' : 'Bluetooth verification not required'}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 space-y-3 md:col-span-2">
+                  <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Verification</h4>
+                  <div className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+                    <p>Device: <span className="text-white">{selectedBluetoothLog.deviceName || 'Unknown device'}</span></p>
+                    <p>Device ID: <span className="text-white">{selectedBluetoothLog.deviceId || 'Not recorded'}</span></p>
+                    <p>Verified at: <span className="text-white">{new Date(selectedBluetoothLog.verifiedAt).toLocaleString()}</span></p>
+                    <p>Status: <span className={selectedBluetoothLog.success ? 'text-success' : 'text-destructive'}>{selectedBluetoothLog.success ? 'Success' : 'Failure'}</span></p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-slate-950/70 p-3 text-sm text-muted-foreground">
+                    {selectedBluetoothLog.reason ? selectedBluetoothLog.reason : 'No failure reason was recorded for this attempt.'}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* System Logs */}
       <motion.div
