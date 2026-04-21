@@ -1106,8 +1106,7 @@ export async function bulkEnrollStudentsByMatricNumbers(courseId: string, matric
     };
   }
 
-  const [{ data: profiles }, { data: studentProfiles }] = await Promise.all([
-    supabase.from('profiles').select('id, full_name, role, department, avatar_url, email').eq('role', 'student'),
+  const [{ data: studentProfiles }] = await Promise.all([
     supabase.from('student_profiles').select('user_id, matric_number'),
   ]);
 
