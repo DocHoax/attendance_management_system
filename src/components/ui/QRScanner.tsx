@@ -17,7 +17,7 @@ interface QRScannerProps {
   onClose: () => void;
 }
 
-export function QRScanner({ bluetoothSession, onScan, onClose }: QRScannerProps) {
+export function QRScanner({ bluetoothSession, studentId, onScan, onClose }: QRScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);

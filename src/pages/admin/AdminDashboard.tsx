@@ -67,7 +67,8 @@ import {
   updateCourse,
   subscribeToTableChanges 
 } from '@/services/universityService';
-import type { BluetoothVerificationLog, Course, Lecturer, Student } from '@/services/universityService';
+import type { BluetoothVerificationLog } from '@/services/universityService';
+import type { Course, Lecturer, Student } from '@/types';
 import { buildAttendanceHistoryEntries, type AttendanceHistoryMode } from '@/lib/attendanceHistory';
 
 type CourseFormState = {
