@@ -80,6 +80,22 @@ type CourseFormState = {
   color: string;
 };
 
+type CourseImportPreviewRow = {
+  lineNumber: number;
+  code: string;
+  title: string;
+  lecturerIdentifier: string;
+  department: string;
+  level: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  color: string;
+  valid: boolean;
+  reason?: string;
+};
+
 const INITIAL_COURSE_FORM: CourseFormState = {
   code: '',
   title: '',
@@ -93,6 +109,12 @@ const INITIAL_COURSE_FORM: CourseFormState = {
   room: '',
   color: '#3b82f6',
 };
+
+const COURSE_IMPORT_TEMPLATE = [
+  'code|title|description|lecturer email or staff ID|department|level|day|start|end|room|color',
+  'CSC 401|Software Engineering|Builds maintainable software|dr.adams@school.edu|Computer Science|400|Monday|09:00|11:00|Hall A|#3b82f6',
+  'MTH 203|Linear Algebra|Matrices, vectors, and systems|staff-102|Mathematics|200|Tuesday|10:00|12:00|Room 3|#10b981',
+].join('\n');
 
 export function AdminDashboard() {
   const admin = useAdmin();
@@ -303,6 +325,108 @@ export function AdminDashboard() {
   const selectedCourseStudents = selectedCourseId
     ? students.filter((student) => student.enrolledCourses.includes(selectedCourseId))
     : [];
+  const bulkCourseImportPreview = useMemo<CourseImportPreviewRow[]>(() => {
+    const rows = bulkCourseImportInput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    if (rows[0].toLowerCase().includes('code') && rows[0].toLowerCase().includes('title') && rows[0].toLowerCase().includes('lecturer')) {
+      rows.shift();
+    }
+
+    return rows.map((line, index) => {
+      const parts = line.split('|').map((part) => part.trim());
+      const [code, title, description, lecturerIdentifier, department, level, dayOfWeek, startTime, endTime, room, color = '#3b82f6'] = parts;
+
+      if (parts.length < 10) {
+        return {
+          lineNumber: index + 1,
+          code: code ?? '',
+          title: title ?? '',
+          lecturerIdentifier: lecturerIdentifier ?? '',
+          department: department ?? '',
+          level: level ?? '',
+          dayOfWeek: dayOfWeek ?? '',
+          startTime: startTime ?? '',
+          endTime: endTime ?? '',
+          room: room ?? '',
+          color,
+          valid: false,
+          reason: 'Expected 10 or 11 pipe-separated values.',
+        };
+      }
+
+      if (!code || !title || !description || !lecturerIdentifier || !department || !level || !dayOfWeek || !startTime || !endTime || !room) {
+        return {
+          lineNumber: index + 1,
+          code: code ?? '',
+          title: title ?? '',
+          lecturerIdentifier: lecturerIdentifier ?? '',
+          department: department ?? '',
+          level: level ?? '',
+          dayOfWeek: dayOfWeek ?? '',
+          startTime: startTime ?? '',
+          endTime: endTime ?? '',
+          room: room ?? '',
+          color,
+          valid: false,
+          reason: 'Missing one or more required values.',
+        };
+      }
+
+      const lecturerMatch = lecturers.find((lecturer) => {
+        const normalizedIdentifier = lecturerIdentifier.trim().toLowerCase();
+
+        return (
+          lecturer.id.toLowerCase() === normalizedIdentifier ||
+          lecturer.email.toLowerCase() === normalizedIdentifier ||
+          lecturer.staffId.toLowerCase() === normalizedIdentifier ||
+          lecturer.name.toLowerCase() === normalizedIdentifier
+        );
+      });
+
+      if (!lecturerMatch) {
+        return {
+          lineNumber: index + 1,
+          code,
+          title,
+          lecturerIdentifier,
+          department,
+          level,
+          dayOfWeek,
+          startTime,
+          endTime,
+          room,
+          color,
+          valid: false,
+          reason: 'Lecturer not found by email, staff ID, name, or profile ID.',
+        };
+      }
+
+      return {
+        lineNumber: index + 1,
+        code,
+        title,
+        lecturerIdentifier,
+        department,
+        level,
+        dayOfWeek,
+        startTime,
+        endTime,
+        room,
+        color,
+        valid: true,
+      };
+    });
+  }, [bulkCourseImportInput, lecturers]);
+
+  const bulkCourseImportValidCount = bulkCourseImportPreview.filter((row) => row.valid).length;
+  const bulkCourseImportInvalidCount = bulkCourseImportPreview.length - bulkCourseImportValidCount;
   const bulkMatricNumbers = useMemo(
     () =>
       Array.from(
@@ -481,6 +605,17 @@ export function AdminDashboard() {
     refreshManagementData();
   };
 
+  const handleDownloadCourseTemplate = () => {
+    const blob = new Blob([COURSE_IMPORT_TEMPLATE], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'course-import-template.txt';
+    link.click();
+    URL.revokeObjectURL(url);
+    success('Template downloaded.');
+  };
+
   if (!admin) return null;
 
   return (
@@ -648,15 +783,58 @@ export function AdminDashboard() {
                 <span>Lecturer identifiers can be email, staff ID, name, or profile ID.</span>
               </div>
 
-              <Button
-                onClick={handleBulkCourseImport}
-                disabled={isSavingBulkCourseImport || lecturers.length === 0}
-                variant="outline"
-                className="border-white/10"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                {isSavingBulkCourseImport ? 'Importing...' : 'Import Courses'}
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={handleDownloadCourseTemplate} variant="outline" className="border-white/10">
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Template
+                </Button>
+                <Button
+                  onClick={handleBulkCourseImport}
+                  disabled={isSavingBulkCourseImport || lecturers.length === 0 || bulkCourseImportPreview.length === 0}
+                  variant="outline"
+                  className="border-white/10"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {isSavingBulkCourseImport ? 'Importing...' : 'Import Courses'}
+                </Button>
+              </div>
+
+              {bulkCourseImportPreview.length > 0 && (
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-medium text-white">Import Preview</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="rounded-full bg-success/15 px-2.5 py-1 text-success">{bulkCourseImportValidCount} valid</span>
+                      <span className="rounded-full bg-destructive/15 px-2.5 py-1 text-destructive">{bulkCourseImportInvalidCount} invalid</span>
+                    </div>
+                  </div>
+
+                  <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                    {bulkCourseImportPreview.map((row) => (
+                      <div key={row.lineNumber} className={`rounded-2xl border p-4 ${row.valid ? 'border-success/20 bg-success/5' : 'border-destructive/20 bg-destructive/5'}`}>
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-white">Line {row.lineNumber}: {row.code || 'Missing code'}</p>
+                            <p className="text-xs text-muted-foreground">{row.title || 'No title provided'} • {row.department || 'No department provided'}</p>
+                          </div>
+                          <Badge className={row.valid ? 'border-success/30 bg-success/15 text-success' : 'border-destructive/30 bg-destructive/15 text-destructive'}>
+                            {row.valid ? 'Ready' : 'Fix needed'}
+                          </Badge>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                          <p>Lecturer: {row.lecturerIdentifier || 'missing'}</p>
+                          <p>Schedule: {row.dayOfWeek || 'missing'} {row.startTime || '--:--'} - {row.endTime || '--:--'}</p>
+                          <p>Room: {row.room || 'missing'}</p>
+                          <p>Color: {row.color || 'missing'}</p>
+                        </div>
+                        {!row.valid && row.reason && (
+                          <p className="mt-3 text-xs text-destructive">{row.reason}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="glass-card p-6 space-y-5">
