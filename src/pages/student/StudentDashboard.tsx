@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import { 
@@ -9,7 +9,8 @@ import {
   BookOpen,
   CheckCircle,
   AlertCircle,
-  QrCode
+  QrCode,
+  Search,
 } from 'lucide-react';
 import { useStudent } from '@/hooks/useAuthHooks';
 import { useAttendance } from '@/hooks/useAttendance';
@@ -17,6 +18,7 @@ import { useToast } from '@/hooks/useToast';
 import { StatCard } from '@/components/ui/StatCard';
 import { CourseCard } from '@/components/ui/CourseCard';
 import { QRScanner } from '@/components/ui/QRScanner';
+import { Input } from '@/components/ui/input';
 import { getStudentCourses, subscribeToTableChanges } from '@/services/universityService';
 import type { Course } from '@/types';
 import type { ScanResult } from '@/types';
@@ -30,6 +32,7 @@ export function StudentDashboard() {
   const [showScanner, setShowScanner] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [courseSearchQuery, setCourseSearchQuery] = useState('');
 
   useEffect(() => {
     if (!student) return;
@@ -76,6 +79,19 @@ export function StudentDashboard() {
   const presentCount = studentAttendanceRecords.filter(r => r.status === 'present').length;
   const attendanceRate = totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0;
   const classesToday = courses.filter(c => c.schedule.day === new Date().toLocaleDateString('en-US', { weekday: 'long' })).length;
+  const visibleCourses = useMemo(() => {
+    const query = courseSearchQuery.trim().toLowerCase();
+
+    if (!query) return courses;
+
+    return courses.filter((course) => {
+      const searchTarget = [course.code, course.title, course.description, course.schedule.day, course.schedule.room]
+        .join(' ')
+        .toLowerCase();
+
+      return searchTarget.includes(query);
+    });
+  }, [courseSearchQuery, courses]);
 
   const selectedActiveSession = selectedCourseId ? getActiveSessionForCourse(selectedCourseId) : undefined;
 
@@ -190,22 +206,40 @@ export function StudentDashboard() {
                 <BookOpen className="w-5 h-5 text-primary" />
                 My Courses
               </h2>
-              <span className="text-sm text-muted-foreground">{courses.length} courses enrolled</span>
+              <span className="text-sm text-muted-foreground">
+                {visibleCourses.length} of {courses.length} courses
+              </span>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={courseSearchQuery}
+                onChange={(event) => setCourseSearchQuery(event.target.value)}
+                placeholder="Search by course code, title, day, or room"
+                className="border-slate-700 bg-slate-800/70 pl-10 text-white placeholder:text-muted-foreground"
+              />
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {courses.map((course, index) => (
-                <CourseCard
-                  key={course.id}
-                  course={course}
-                  onClick={() => {
-                    setSelectedCourseId(course.id);
-                    setShowScanner(true);
-                  }}
-                  actionLabel="Scan Attendance"
-                  delay={index * 0.1}
-                />
-              ))}
+              {visibleCourses.length > 0 ? (
+                visibleCourses.map((course, index) => (
+                  <CourseCard
+                    key={course.id}
+                    course={course}
+                    onClick={() => {
+                      setSelectedCourseId(course.id);
+                      setShowScanner(true);
+                    }}
+                    actionLabel="Scan Attendance"
+                    delay={index * 0.1}
+                  />
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-800/30 p-8 text-sm text-muted-foreground md:col-span-2">
+                  No courses match your search. Try a different course code, title, room, or day.
+                </div>
+              )}
             </div>
           </div>
         ) : null}

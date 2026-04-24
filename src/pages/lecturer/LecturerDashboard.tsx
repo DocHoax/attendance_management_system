@@ -53,6 +53,7 @@ export function LecturerDashboard() {
   const [currentSession, setCurrentSession] = useState<ActiveSession | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [showAttendanceHistory, setShowAttendanceHistory] = useState(false);
+  const [selectedHistoryCourseId, setSelectedHistoryCourseId] = useState('');
 
   useEffect(() => {
     if (!lecturer) return;
@@ -80,6 +81,7 @@ export function LecturerDashboard() {
   const attendanceHistory = useMemo(() => {
     return attendanceRecords
       .filter((record) => lecturerCourseIds.has(record.courseId))
+      .filter((record) => !selectedHistoryCourseId || record.courseId === selectedHistoryCourseId)
       .slice()
       .sort((left, right) => {
         const leftTimestamp = new Date(`${left.date}T${left.time}:00`).getTime();
@@ -87,7 +89,7 @@ export function LecturerDashboard() {
         return rightTimestamp - leftTimestamp;
       })
       .slice(0, 12);
-  }, [attendanceRecords, lecturerCourseIds]);
+  }, [attendanceRecords, lecturerCourseIds, selectedHistoryCourseId]);
 
   if (!lecturer) return null;
   
@@ -102,6 +104,8 @@ export function LecturerDashboard() {
   const activeSessionsCount = activeSessions.filter(s => 
     s.lecturerId === lecturer.id && s.isActive
   ).length;
+
+  const selectedHistoryCourse = courses.find((course) => course.id === selectedHistoryCourseId);
 
   const handleGenerateCode = () => {
     if (!selectedCourse) return;
@@ -329,6 +333,11 @@ export function LecturerDashboard() {
                     variant="ghost"
                     size="sm"
                     className="px-2"
+                    onClick={() => {
+                      setSelectedHistoryCourseId(course.id);
+                      setShowAttendanceHistory(true);
+                    }}
+                    aria-label={`View attendance history for ${course.code}`}
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Button>
@@ -342,13 +351,32 @@ export function LecturerDashboard() {
       <Dialog open={showAttendanceHistory} onOpenChange={setShowAttendanceHistory}>
         <DialogContent className="max-h-[85vh] overflow-hidden border-white/10 bg-slate-950 text-white">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-white">Attendance History</DialogTitle>
+            <DialogTitle className="text-xl font-bold text-white">
+              {selectedHistoryCourse ? `${selectedHistoryCourse.code} Attendance History` : 'Attendance History'}
+            </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Recent attendance activity across your assigned courses.
+              {selectedHistoryCourse
+                ? `Recent attendance activity for ${selectedHistoryCourse.title}.`
+                : 'Recent attendance activity across your assigned courses.'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 overflow-y-auto pr-1">
+            {selectedHistoryCourse && (
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+                <span>Filtered to {selectedHistoryCourse.code}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-3 text-primary hover:bg-primary/15 hover:text-primary"
+                  onClick={() => setSelectedHistoryCourseId('')}
+                >
+                  Clear filter
+                </Button>
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-2xl border border-white/10 bg-slate-800/50 p-4">
                 <p className="text-xs text-muted-foreground">Records</p>

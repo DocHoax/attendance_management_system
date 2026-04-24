@@ -112,6 +112,44 @@ function InfoCard({
   );
 }
 
+const ACCENT_THEME_PRESETS: Record<AccentName, Record<string, string>> = {
+  blue: {
+    '--primary': '217 91% 60%',
+    '--secondary': '263 70% 50%',
+    '--accent': '263 70% 50%',
+    '--ring': '217 91% 60%',
+    '--sidebar-primary': '217 91% 60%',
+    '--sidebar-ring': '217 91% 60%',
+  },
+  teal: {
+    '--primary': '174 72% 45%',
+    '--secondary': '200 95% 42%',
+    '--accent': '174 52% 35%',
+    '--ring': '174 72% 45%',
+    '--sidebar-primary': '174 72% 45%',
+    '--sidebar-ring': '174 72% 45%',
+  },
+  amber: {
+    '--primary': '38 92% 50%',
+    '--secondary': '14 91% 55%',
+    '--accent': '38 80% 40%',
+    '--ring': '38 92% 50%',
+    '--sidebar-primary': '38 92% 50%',
+    '--sidebar-ring': '38 92% 50%',
+  },
+};
+
+function applyAccentTheme(accent: AccentName) {
+  if (typeof document === 'undefined') return;
+
+  const root = document.documentElement;
+  const themeVariables = ACCENT_THEME_PRESETS[accent];
+
+  Object.entries(themeVariables).forEach(([variable, value]) => {
+    root.style.setProperty(variable, value);
+  });
+}
+
 export function Settings() {
   const { user, updateUserProfile, changePassword } = useAuth();
   const student = useStudent();
@@ -145,6 +183,10 @@ export function Settings() {
   const [sessionReminders, setSessionReminders] = useState(storedSettings.sessionReminders);
   const [weeklySummary, setWeeklySummary] = useState(storedSettings.weeklySummary);
   const [cameraGuidance, setCameraGuidance] = useState(storedSettings.cameraGuidance);
+
+  useEffect(() => {
+    applyAccentTheme(accent);
+  }, [accent]);
 
   useEffect(() => {
     if (!user) return;
