@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   QrCode, 
   UserCircle, 
@@ -273,6 +273,13 @@ export function Login() {
               <p className="text-xs text-muted-foreground mb-2">Supabase Auth:</p>
               <code className="text-xs text-muted-foreground block">Enter the email and password created in Supabase.</code>
             </div>
+
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              Don't have an account?{' '}
+              <Link to="/signup" className="text-primary hover:underline font-medium">
+                Sign up
+              </Link>
+            </p>
           </div>
         </motion.div>
       </div>

@@ -513,6 +513,101 @@ async function loadSupabaseUser(authUser: SupabaseAuthUser): Promise<Authenticat
   return mapProfileRow(profile as ProfileRow, adminDetails as AdminProfileRow | undefined) as Admin;
 }
 
+export type RegisterUserInput = {
+  email: string;
+  password: string;
+  fullName: string;
+  role: UserRole;
+  department: string;
+  matricNumber?: string;
+  level?: number;
+  staffId?: string;
+  position?: string;
+};
+
+export type RegisterResult = {
+  user: User | null;
+  needsEmailConfirmation: boolean;
+  errorCode: 'registration-failed' | 'email-in-use' | null;
+  message: string | null;
+};
+
+export async function registerUser(input: RegisterUserInput): Promise<RegisterResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: 'registration-failed',
+      message: 'Supabase is not configured for this workspace.',
+    };
+  }
+
+  const metadata: Record<string, unknown> = {
+    full_name: input.fullName.trim(),
+    role: input.role,
+    department: input.department.trim(),
+  };
+
+  if (input.role === 'student') {
+    if (input.matricNumber?.trim()) metadata.matric_number = input.matricNumber.trim();
+    if (typeof input.level === 'number' && Number.isFinite(input.level)) metadata.level = input.level;
+  } else if (input.role === 'lecturer') {
+    if (input.staffId?.trim()) metadata.staff_id = input.staffId.trim();
+    if (input.position?.trim()) metadata.position = input.position.trim();
+  } else if (input.role === 'admin') {
+    if (input.staffId?.trim()) metadata.staff_id = input.staffId.trim();
+    if (input.position?.trim()) metadata.position = input.position.trim();
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email: input.email,
+    password: input.password,
+    options: {
+      data: metadata,
+    },
+  });
+
+  if (error) {
+    const isEmailInUse = /already registered|already exists|duplicate/i.test(error.message);
+    return {
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: isEmailInUse ? 'email-in-use' : 'registration-failed',
+      message: error.message,
+    };
+  }
+
+  if (!data.user) {
+    return {
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: 'registration-failed',
+      message: 'Unable to create account. Please try again.',
+    };
+  }
+
+  // If a session was returned, the user is already signed in; sync profile rows.
+  if (data.session) {
+    await syncAuthenticatedProfile();
+    const user = (await loadSupabaseUser(data.user)) ?? buildFallbackUser(data.user, input.role);
+
+    return {
+      user,
+      needsEmailConfirmation: false,
+      errorCode: null,
+      message: null,
+    };
+  }
+
+  // No session => email confirmation is required.
+  return {
+    user: buildFallbackUser(data.user, input.role),
+    needsEmailConfirmation: true,
+    errorCode: null,
+    message: 'Check your email to confirm your account before signing in.',
+  };
+}
+
 export async function authenticateUser(email: string, password: string, role: UserRole): Promise<AuthResult> {
   if (!isSupabaseConfigured || !supabase) {
     return {

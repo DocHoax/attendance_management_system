@@ -10,6 +10,7 @@ import { ToastContainer } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Login } from '@/pages/Login';
+import { SignUp } from '@/pages/SignUp';
 import { Settings } from '@/pages/Settings';
 import { StudentDashboard } from '@/pages/student/StudentDashboard';
 import { LecturerDashboard } from '@/pages/lecturer/LecturerDashboard';
@@ -116,6 +117,7 @@ function AppRoutes() {
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<SignUp />} />
       
       {/* Protected Dashboard Routes */}
       <Route

@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import type { User, UserRole } from '@/types';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
-import { authenticateUser, changeUserPassword, restoreAuthenticatedUser, signOutUser, updateProfileInDatabase } from '@/services/universityService';
-import { AuthContext } from '@/hooks/auth-context';
+import { authenticateUser, changeUserPassword, registerUser, restoreAuthenticatedUser, signOutUser, updateProfileInDatabase } from '@/services/universityService';
+import { AuthContext, type RegisterInput, type RegisterOutcome } from '@/hooks/auth-context';
 
 const AUTH_STORAGE_KEY = 'attendance-management-auth-user';
 
@@ -84,6 +84,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
+  const register = useCallback(async (input: RegisterInput): Promise<RegisterOutcome> => {
+    setIsLoading(true);
+    setAuthError(null);
+
+    const result = await registerUser(input);
+
+    if (result.errorCode) {
+      setAuthError(result.message ?? 'Unable to create account.');
+      setIsLoading(false);
+      return {
+        success: false,
+        needsEmailConfirmation: false,
+        message: result.message,
+      };
+    }
+
+    if (result.user && !result.needsEmailConfirmation) {
+      setUser(result.user);
+    }
+
+    setIsLoading(false);
+    return {
+      success: true,
+      needsEmailConfirmation: result.needsEmailConfirmation,
+      message: result.message,
+    };
+  }, []);
+
   const logout = useCallback(() => {
     void signOutUser();
     setUser(null);
@@ -117,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       isAuthenticated: !!user,
       login,
+      register,
       logout,
       updateUserProfile,
       changePassword,
