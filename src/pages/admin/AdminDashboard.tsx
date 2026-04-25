@@ -128,6 +128,7 @@ export function AdminDashboard() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [courseSearchQuery, setCourseSearchQuery] = useState('');
   const [courses, setCourses] = useState<Course[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -264,6 +265,29 @@ export function AdminDashboard() {
     const matchesStatus = !showActiveOnly || session.isActive;
     return matchesSearch && matchesStatus;
   });
+
+  const filteredCourses = useMemo(() => {
+    const query = courseSearchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return courses;
+    }
+
+    return courses.filter((course) => {
+      const searchTarget = [
+        course.code,
+        course.title,
+        course.department,
+        course.lecturerName,
+        course.schedule.day,
+        course.schedule.room,
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      return searchTarget.includes(query);
+    });
+  }, [courseSearchQuery, courses]);
 
   const filteredBluetoothLogs = useMemo(() => {
     const query = bluetoothSearchQuery.trim().toLowerCase();
@@ -993,15 +1017,35 @@ export function AdminDashboard() {
                 <h4 className="text-base font-semibold text-white">Current Course Rosters</h4>
                 <p className="text-sm text-muted-foreground">Choose a course to review or remove enrolled students.</p>
               </div>
-              <select value={selectedCourseId} onChange={(event) => setSelectedCourseId(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-sm text-white outline-none transition-colors focus:border-primary md:w-80">
-                <option value="">Select course to review</option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.code} - {course.title}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-3 md:w-96">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={courseSearchQuery}
+                    onChange={(event) => setCourseSearchQuery(event.target.value)}
+                    placeholder="Search courses by code, title, lecturer, or room"
+                    className="pl-10 bg-slate-800 border-slate-700 text-white"
+                  />
+                </div>
+                <select value={selectedCourseId} onChange={(event) => setSelectedCourseId(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-sm text-white outline-none transition-colors focus:border-primary">
+                  <option value="">Select course to review</option>
+                  {filteredCourses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.code} - {course.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Showing {filteredCourses.length} of {courses.length} courses.
+                </p>
+              </div>
             </div>
+
+            {courses.length > 0 && filteredCourses.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-slate-900/30 p-5 text-sm text-muted-foreground">
+                No courses match the current search. Clear the filter to show all roster entries.
+              </div>
+            )}
 
             {selectedCourse ? (
               <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
