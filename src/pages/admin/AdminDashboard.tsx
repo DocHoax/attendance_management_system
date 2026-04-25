@@ -128,6 +128,7 @@ export function AdminDashboard() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [attendanceTrendRange, setAttendanceTrendRange] = useState<'7d' | '14d' | '30d'>('7d');
   const [courseSearchQuery, setCourseSearchQuery] = useState('');
   const [courses, setCourses] = useState<Course[]>([]);
   const [lecturers, setLecturers] = useState<Lecturer[]>([]);
@@ -225,28 +226,30 @@ export function AdminDashboard() {
   }, [refreshBluetoothLogs, refreshManagementData]);
 
   const weeklyData = useMemo(() => {
-    const days = Array.from({ length: 5 }, (_, index) => {
+    const rangeDays = attendanceTrendRange === '14d' ? 14 : attendanceTrendRange === '30d' ? 30 : 7;
+
+    const days = Array.from({ length: rangeDays }, (_, index) => {
       const date = new Date();
-      date.setDate(date.getDate() - (4 - index));
+      date.setDate(date.getDate() - ((rangeDays - 1) - index));
       return {
         key: date.toISOString().split('T')[0],
-        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       };
     });
 
-    return days.map(({ key, day }) => {
+    return days.map(({ key, label }) => {
       const attendance = attendanceRecords.filter((record) => record.date === key).length;
       const expected = activeSessions
         .filter((session) => session.createdAt.split('T')[0] === key)
         .reduce((total, session) => total + session.totalStudents, 0);
 
       return {
-        day,
+        day: label,
         attendance,
         expected: expected > 0 ? expected : attendance,
       };
     });
-  }, [activeSessions, attendanceRecords]);
+  }, [activeSessions, attendanceRecords, attendanceTrendRange]);
 
   // Calculate stats
   const activeClassesToday = activeSessions.filter(s => s.isActive).length;
@@ -1209,12 +1212,16 @@ export function AdminDashboard() {
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-primary" />
-              Weekly Attendance Trend
+              Attendance Trend
             </h3>
-            <select className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-sm text-white">
-              <option>This Week</option>
-              <option>Last Week</option>
-              <option>This Month</option>
+            <select
+              value={attendanceTrendRange}
+              onChange={(event) => setAttendanceTrendRange(event.target.value as '7d' | '14d' | '30d')}
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-sm text-white"
+            >
+              <option value="7d">Last 7 days</option>
+              <option value="14d">Last 14 days</option>
+              <option value="30d">Last 30 days</option>
             </select>
           </div>
           <div className="h-64">
