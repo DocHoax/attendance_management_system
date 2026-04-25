@@ -21,6 +21,7 @@ import {
   Plus,
   UserPlus,
   Trash2,
+  Copy,
 } from 'lucide-react';
 import { useAdmin } from '@/hooks/useAuthHooks';
 import { useAttendance } from '@/hooks/useAttendance';
@@ -427,6 +428,9 @@ export function AdminDashboard() {
   };
 
   const selectedCourse = courses.find((course) => course.id === selectedCourseId);
+  const selectedCourseActiveSession = selectedCourseId
+    ? activeSessions.find((session) => session.courseId === selectedCourseId && session.isActive)
+    : undefined;
   const selectedCourseStudents = selectedCourseId
     ? students.filter((student) => student.enrolledCourses.includes(selectedCourseId))
     : [];
@@ -719,6 +723,34 @@ export function AdminDashboard() {
     link.click();
     URL.revokeObjectURL(url);
     success('Template downloaded.');
+  };
+
+  const handleCopyAttendanceDetails = async () => {
+    if (!selectedCourse) {
+      return;
+    }
+
+    const details = selectedCourseActiveSession
+      ? [
+          `Course: ${selectedCourse.code} - ${selectedCourse.title}`,
+          `Session ID: ${selectedCourseActiveSession.id}`,
+          `Lecturer: ${selectedCourseActiveSession.lecturerName}`,
+          `Room: ${selectedCourseActiveSession.room}`,
+          `Status: Active`,
+        ].join('\n')
+      : [
+          `Course: ${selectedCourse.code} - ${selectedCourse.title}`,
+          `Lecturer: ${selectedCourse.lecturerName}`,
+          `Room: ${selectedCourse.schedule.room}`,
+          'Status: No active session',
+        ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(details);
+      success('Attendance details copied to clipboard.');
+    } catch {
+      error('Unable to copy attendance details.');
+    }
   };
 
   if (!admin) return null;
@@ -1132,8 +1164,16 @@ export function AdminDashboard() {
                       <span className="text-white">{selectedCourse.schedule.room}</span>
                     </div>
                     <div className="flex items-center justify-between rounded-2xl bg-slate-900/40 px-4 py-3">
-                      <span>Attendance link</span>
-                      <span className="text-white">Ready</span>
+                      <span>Attendance access</span>
+                      <div className="flex items-center gap-2">
+                        <span className={selectedCourseActiveSession ? 'text-success' : 'text-muted-foreground'}>
+                          {selectedCourseActiveSession ? 'Live session' : 'No live session'}
+                        </span>
+                        <Button variant="ghost" size="sm" className="h-8 gap-2 px-3 text-white hover:bg-white/5" onClick={handleCopyAttendanceDetails}>
+                          <Copy className="h-4 w-4" />
+                          Copy details
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
