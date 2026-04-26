@@ -627,19 +627,14 @@ export async function authenticateUser(email: string, password: string, role: Us
     };
   }
 
-  await syncAuthenticatedProfile();
+  void syncAuthenticatedProfile();
+  void loadSupabaseUser(data.user);
 
-  const user = await loadSupabaseUser(data.user);
-
-  if (!user) {
-    return {
-      user: buildFallbackUser(data.user, role),
-      errorCode: null,
-      message: null,
-    };
-  }
-
-  return { user, errorCode: null, message: null };
+  return {
+    user: buildFallbackUser(data.user, role),
+    errorCode: null,
+    message: null,
+  };
 }
 
 export async function restoreAuthenticatedUser(): Promise<User | null> {

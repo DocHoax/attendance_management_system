@@ -66,9 +66,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, _password: string, role: UserRole): Promise<boolean> => {
     setIsLoading(true);
     setAuthError(null);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
 
     const { user: authenticatedUser, message } = await authenticateUser(email, _password, role);
 
