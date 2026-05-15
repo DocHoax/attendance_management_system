@@ -60,6 +60,18 @@ export function SignUp() {
       return;
     }
 
+    if (selectedRole === 'student') {
+      if (!matricNumber.trim()) {
+        error('Matric number is required for student accounts.');
+        return;
+      }
+
+      if (!level.trim()) {
+        error('Level is required for student accounts.');
+        return;
+      }
+    }
+
     const parsedLevel = level ? Number(level) : undefined;
     const outcome = await register({
       email: email.trim(),
@@ -67,10 +79,10 @@ export function SignUp() {
       fullName: fullName.trim(),
       role: selectedRole,
       department: department.trim(),
-      matricNumber: selectedRole === 'student' ? matricNumber : undefined,
+      matricNumber: selectedRole === 'student' ? matricNumber.trim() : undefined,
       level: selectedRole === 'student' && parsedLevel && Number.isFinite(parsedLevel) ? parsedLevel : undefined,
-      staffId: selectedRole !== 'student' ? staffId : undefined,
-      position: selectedRole !== 'student' ? position : undefined,
+      staffId: selectedRole !== 'student' ? staffId.trim() : undefined,
+      position: selectedRole !== 'student' ? position.trim() : undefined,
     });
 
     if (!outcome.success) {
@@ -242,6 +254,7 @@ export function SignUp() {
                         onChange={(e) => setMatricNumber(e.target.value)}
                         placeholder="MAT/2024/001"
                         className="pl-10 bg-slate-800 border-slate-700 text-white placeholder:text-muted-foreground"
+                        required={selectedRole === 'student'}
                       />
                     </div>
                   </div>
@@ -257,6 +270,7 @@ export function SignUp() {
                         min={100}
                         step={100}
                         className="pl-10 bg-slate-800 border-slate-700 text-white placeholder:text-muted-foreground"
+                        required={selectedRole === 'student'}
                       />
                     </div>
                   </div>

@@ -344,8 +344,8 @@ begin
     insert into public.student_profiles (user_id, matric_number, level, attendance_rate)
     values (
       new.id,
-      coalesce(metadata ->> 'matric_number', generated_student_number),
-      coalesce((metadata ->> 'level')::integer, 100),
+      coalesce(nullif(metadata ->> 'matric_number', ''), generated_student_number),
+      coalesce((nullif(metadata ->> 'level', ''))::integer, 100),
       coalesce((metadata ->> 'attendance_rate')::numeric, 0)
     )
     on conflict (user_id) do nothing;
