@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { 
   Calendar, 
   Clock, 
@@ -19,7 +19,8 @@ import { StatCard } from '@/components/ui/StatCard';
 import { CourseCard } from '@/components/ui/CourseCard';
 import { QRScanner } from '@/components/ui/QRScanner';
 import { Input } from '@/components/ui/input';
-import { getStudentCourses, subscribeToTableChanges } from '@/services/universityService';
+import { getStudentCourses, subscribeToTableChanges, getStudentProgress, upsertStudentProgress, subscribeToStudentProgress } from '@/services/universityService';
+import type { ProgressEntry } from '@/services/universityService';
 import type { Course } from '@/types';
 import type { ScanResult } from '@/types';
 
@@ -33,6 +34,7 @@ export function StudentDashboard() {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [courseSearchQuery, setCourseSearchQuery] = useState('');
+  const [progressEntries, setProgressEntries] = useState<ProgressEntry[]>([]);
 
   useEffect(() => {
     if (!student) return;
@@ -47,12 +49,27 @@ export function StudentDashboard() {
       });
     };
 
+    const refreshProgress = () => {
+      void getStudentProgress(student.id).then((entries) => {
+        if (isMounted) setProgressEntries(entries || []);
+      });
+    };
+
     refreshCourses();
+    refreshProgress();
     const cleanup = subscribeToTableChanges(['course_enrollments', 'courses', 'course_schedules'], refreshCourses);
+    const cleanupProgress = subscribeToStudentProgress(student.id, (entry) => {
+      setProgressEntries((prev) => {
+        const next = prev.filter((p) => p.id !== entry.id && !(p.userId === entry.userId && p.courseId === entry.courseId && p.key === entry.key));
+        next.unshift(entry);
+        return next;
+      });
+    });
 
     return () => {
       isMounted = false;
       cleanup?.();
+      cleanupProgress?.();
     };
   }, [student]);
 
@@ -152,6 +169,7 @@ export function StudentDashboard() {
             <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
             <span className="text-sm text-white">Student Portal</span>
           </div>
+          <Link to="/progress" className="glass-card px-3 py-2 text-sm text-white hover:underline">View Progress</Link>
         </div>
       </motion.div>
 
@@ -241,6 +259,53 @@ export function StudentDashboard() {
                 </div>
               )}
             </div>
+            {/* Student Progress Panel (small) */}
+            {isDashboardView && (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold text-white mb-3">Learning Progress</h3>
+                <div className="space-y-3">
+                  {progressEntries.length > 0 ? (
+                    progressEntries.map((entry) => {
+                      const course = entry.courseId ? courses.find((c) => c.id === entry.courseId) : undefined;
+                      return (
+                        <div key={entry.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-white truncate">{course ? `${course.code} • ${course.title}` : entry.key}</p>
+                            <p className="text-xs text-muted-foreground">Updated {new Date(entry.updatedAt).toLocaleString()}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-medium text-white">{Math.round(entry.progressValue)}%</span>
+                            <button
+                              onClick={async () => {
+                                const nextValue = Math.min(100, Math.round(entry.progressValue + 10));
+                                const updated = await upsertStudentProgress(student.id, [{ courseId: entry.courseId ?? null, key: entry.key, progressValue: nextValue, meta: entry.meta ?? null }]);
+                                if (updated) setProgressEntries((prev) => [updated[0], ...prev.filter((p) => p.id !== updated[0].id)]);
+                              }}
+                              className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-sm"
+                            >
+                              +10
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const updated = await upsertStudentProgress(student.id, [{ courseId: entry.courseId ?? null, key: entry.key, progressValue: 100, meta: entry.meta ?? null }]);
+                                if (updated) setProgressEntries((prev) => [updated[0], ...prev.filter((p) => p.id !== updated[0].id)]);
+                              }}
+                              className="px-3 py-1 rounded-md bg-success text-success-foreground text-sm"
+                            >
+                              Complete
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-slate-800/30 p-4 text-sm text-muted-foreground">
+                      No progress tracked yet. Progress entries will appear here as you interact with course content.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
 

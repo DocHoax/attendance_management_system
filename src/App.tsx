@@ -13,6 +13,7 @@ import { Login } from '@/pages/Login';
 import { SignUp } from '@/pages/SignUp';
 import { Settings } from '@/pages/Settings';
 import { StudentDashboard } from '@/pages/student/StudentDashboard';
+import { StudentProgressPage } from '@/pages/student/Progress';
 import { LecturerDashboard } from '@/pages/lecturer/LecturerDashboard';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { Menu, QrCode } from 'lucide-react';
@@ -148,6 +149,16 @@ function AppRoutes() {
           <ProtectedRoute allowedRoles={['student']}>
             <DashboardLayout>
               <StudentDashboard />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/progress"
+        element={
+          <ProtectedRoute allowedRoles={["student"]}>
+            <DashboardLayout>
+              <StudentProgressPage />
             </DashboardLayout>
           </ProtectedRoute>
         }

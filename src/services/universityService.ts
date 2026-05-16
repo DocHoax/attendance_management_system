@@ -201,6 +201,26 @@ type BluetoothVerificationSessionRow = {
   expires_at: string;
 };
 
+type StudentProgressRow = {
+  id: string;
+  user_id: string;
+  course_id?: string | null;
+  key: string;
+  progress_value: number;
+  meta?: Record<string, unknown> | null;
+  updated_at: string;
+};
+
+export type ProgressEntry = {
+  id: string;
+  userId: string;
+  courseId?: string | null;
+  key: string;
+  progressValue: number;
+  meta?: Record<string, unknown> | null;
+  updatedAt: string;
+};
+
 type SupabaseAuthUser = {
   id: string;
   email?: string | null;
@@ -1795,4 +1815,90 @@ export async function getDepartmentDistribution(): Promise<Array<{ name: string;
       value,
       color: palette[index % palette.length],
     }));
+}
+
+export async function getStudentProgress(userId: string): Promise<ProgressEntry[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  const { data } = await supabase
+    .from('student_progress')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+
+  return (data ?? []).map((row) => {
+    const r = row as StudentProgressRow;
+    return {
+      id: r.id,
+      userId: r.user_id,
+      courseId: r.course_id ?? null,
+      key: r.key,
+      progressValue: Number(r.progress_value ?? 0),
+      meta: r.meta ?? null,
+      updatedAt: r.updated_at,
+    } as ProgressEntry;
+  });
+}
+
+export async function upsertStudentProgress(userId: string, entries: Array<{ courseId?: string | null; key: string; progressValue: number; meta?: Record<string, unknown> | null }>): Promise<ProgressEntry[] | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  if (!entries || entries.length === 0) return [];
+
+  const rows = entries.map((e) => ({
+    user_id: userId,
+    course_id: e.courseId ?? null,
+    key: e.key,
+    progress_value: e.progressValue,
+    meta: e.meta ?? null,
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { data, error } = await supabase
+    .from('student_progress')
+    .upsert(rows, { onConflict: ['user_id', 'course_id', 'key'] })
+    .select('*');
+
+  if (error) return null;
+
+  return (data ?? []).map((r) => {
+    const row = r as StudentProgressRow;
+    return {
+      id: row.id,
+      userId: row.user_id,
+      courseId: row.course_id ?? null,
+      key: row.key,
+      progressValue: Number(row.progress_value ?? 0),
+      meta: row.meta ?? null,
+      updatedAt: row.updated_at,
+    } as ProgressEntry;
+  });
+}
+
+export function subscribeToStudentProgress(userId: string, onChange: (entry: ProgressEntry) => void): (() => void) | undefined {
+  if (!isSupabaseConfigured || !supabase) return undefined;
+
+  const channel = supabase.channel(`student-progress:${userId}`);
+
+  channel.on('postgres_changes', { event: '*', schema: 'public', table: 'student_progress' }, (payload) => {
+    const newRow = payload.new as StudentProgressRow | undefined;
+    if (!newRow) return;
+    if (newRow.user_id !== userId) return;
+
+    onChange({
+      id: newRow.id,
+      userId: newRow.user_id,
+      courseId: newRow.course_id ?? null,
+      key: newRow.key,
+      progressValue: Number(newRow.progress_value ?? 0),
+      meta: newRow.meta ?? null,
+      updatedAt: newRow.updated_at,
+    });
+  });
+
+  channel.subscribe();
+
+  return () => {
+    void supabase?.removeChannel(channel);
+  };
 }
