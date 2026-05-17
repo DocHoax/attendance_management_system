@@ -568,6 +568,17 @@ export async function registerUser(input: RegisterUserInput): Promise<RegisterRe
     department: input.department.trim(),
   };
 
+  // Only allow institutional emails for registration
+  const normalizedEmail = input.email?.trim().toLowerCase() ?? '';
+  if (!normalizedEmail.endsWith('@lasustech.edu.ng')) {
+    return {
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: 'registration-failed',
+      message: 'Registrations are restricted to @lasustech.edu.ng email addresses.',
+    };
+  }
+
   if (input.role === 'student') {
     if (input.matricNumber?.trim()) metadata.matric_number = input.matricNumber.trim();
     if (typeof input.level === 'number' && Number.isFinite(input.level)) metadata.level = input.level;

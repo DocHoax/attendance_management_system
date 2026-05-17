@@ -50,6 +50,13 @@ export function SignUp() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Enforce institutional email domain
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail.endsWith('@lasustech.edu.ng')) {
+      error('Please sign up with your @lasustech.edu.ng email address.');
+      return;
+    }
+
     if (password.length < 8) {
       error('Password must be at least 8 characters long.');
       return;
