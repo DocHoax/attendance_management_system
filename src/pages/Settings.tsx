@@ -253,9 +253,9 @@ export function Settings() {
   const todayRecords = attendanceRecords.filter((record) => record.date === today);
 
   const roleAccentStyles: Record<AccentName, string> = {
-    blue: 'from-blue-500/20 to-cyan-500/20 text-blue-300',
-    teal: 'from-emerald-500/20 to-teal-500/20 text-emerald-300',
-    amber: 'from-amber-500/20 to-orange-500/20 text-amber-300',
+    blue: 'bg-blue-500/20 text-blue-300',
+    teal: 'bg-emerald-500/20 text-emerald-300',
+    amber: 'bg-amber-500/20 text-amber-300',
   };
 
   const roleBadgeStyles: Record<UserRole, string> = {
@@ -460,7 +460,7 @@ export function Settings() {
               <h2 className="text-xl font-semibold text-white">Profile Details</h2>
               <p className="text-sm text-muted-foreground">These details are used across the dashboard.</p>
             </div>
-            <div className={`rounded-full bg-gradient-to-r px-4 py-2 text-sm font-medium ${roleAccentStyles[accent]}`}>
+            <div className={`rounded-full px-4 py-2 text-sm font-medium ${roleAccentStyles[accent]}`}>
               Active accent: {accentOptions.find((option) => option.key === accent)?.label}
             </div>
           </div>
@@ -468,7 +468,7 @@ export function Settings() {
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-5 rounded-3xl border border-white/10 bg-slate-800/50 p-5">
               <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-secondary text-2xl font-bold text-white">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-white">
                   {displayName
                     .split(' ')
                     .map((part) => part[0])
@@ -589,7 +589,7 @@ export function Settings() {
                 <Button onClick={handleReset} variant="outline" className="border-white/10">
                   Reset
                 </Button>
-                <Button onClick={handleSave} className="btn-glow bg-gradient-to-r from-primary to-secondary" disabled={!hasChanges}>
+                <Button onClick={handleSave} className="btn-glow bg-primary" disabled={!hasChanges}>
                   <Save className="mr-2 h-4 w-4" />
                   Save Changes
                 </Button>
@@ -628,7 +628,7 @@ export function Settings() {
                       <p className="font-medium text-white">{option.label}</p>
                       <p className="text-sm text-muted-foreground">A subtle dashboard accent palette</p>
                     </div>
-                    <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${roleAccentStyles[option.key]}`} />
+                    <div className={`h-10 w-10 rounded-xl ${roleAccentStyles[option.key]}`} />
                   </button>
                 );
               })}

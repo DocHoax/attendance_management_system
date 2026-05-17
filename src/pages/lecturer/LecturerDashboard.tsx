@@ -230,7 +230,7 @@ export function LecturerDashboard() {
         <div className="flex flex-wrap gap-4">
           <Button
             onClick={() => setShowGenerateDialog(true)}
-            className="btn-glow bg-gradient-to-r from-primary to-secondary"
+            className="btn-glow bg-primary"
             size="lg"
           >
             <QrCode className="w-5 h-5 mr-2" />
@@ -527,7 +527,7 @@ export function LecturerDashboard() {
             <Button
               onClick={handleGenerateCode}
               disabled={!selectedCourse}
-              className="flex-1 btn-glow bg-gradient-to-r from-primary to-secondary"
+              className="flex-1 btn-glow bg-primary"
             >
               <QrCode className="w-4 h-4 mr-2" />
               Generate Code

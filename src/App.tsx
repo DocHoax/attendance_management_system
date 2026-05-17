@@ -53,7 +53,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/95 backdrop-blur-xl lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <QrCode className="h-5 w-5 text-white" />
             </div>
             <div>

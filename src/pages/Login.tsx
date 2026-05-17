@@ -20,9 +20,9 @@ import { useToast } from '@/hooks/useToast';
 import type { UserRole } from '@/types';
 
 const roles = [
-  { id: 'student' as UserRole, label: 'Student', icon: GraduationCap, color: 'from-blue-500 to-cyan-500' },
-  { id: 'lecturer' as UserRole, label: 'Lecturer', icon: UserCircle, color: 'from-violet-500 to-purple-500' },
-  { id: 'admin' as UserRole, label: 'Admin', icon: Shield, color: 'from-emerald-500 to-teal-500' }
+  { id: 'student' as UserRole, label: 'Student', icon: GraduationCap, color: 'bg-blue-500' },
+  { id: 'lecturer' as UserRole, label: 'Lecturer', icon: UserCircle, color: 'bg-violet-500' },
+  { id: 'admin' as UserRole, label: 'Admin', icon: Shield, color: 'bg-emerald-500' }
 ];
 
 export function Login() {
@@ -69,7 +69,7 @@ export function Login() {
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-slate-900 items-center justify-center px-12 xl:px-16">
         {/* Animated Background */}
         <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-secondary/20 to-slate-900" />
+          <div className="absolute inset-0 bg-primary/20" />
           
           {/* Floating Elements */}
           {floatingTiles.map((tile, i) => (
@@ -86,10 +86,10 @@ export function Login() {
                 ease: 'easeInOut',
               }}
             >
-              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${
-                i % 3 === 0 ? 'from-primary/30 to-primary/10' :
-                i % 3 === 1 ? 'from-secondary/30 to-secondary/10' :
-                'from-success/30 to-success/10'
+              <div className={`w-14 h-14 rounded-2xl ${
+                i % 3 === 0 ? 'bg-primary/30' :
+                i % 3 === 1 ? 'bg-secondary/30' :
+                'bg-success/30'
               } backdrop-blur-sm border border-white/10 flex items-center justify-center`}>
                 <QrCode className="w-7 h-7 text-white/50" />
               </div>
@@ -115,7 +115,7 @@ export function Login() {
             className="space-y-8"
           >
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shrink-0 shadow-lg shadow-primary/25">
+              <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shrink-0 shadow-lg shadow-primary/25">
                 <QrCode className="w-8 h-8 text-white" />
               </div>
               <div>
@@ -158,7 +158,7 @@ export function Login() {
         >
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
               <QrCode className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -183,7 +183,7 @@ export function Login() {
                     onClick={() => handleRoleChange(role.id)}
                     className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-300 ${
                       isSelected 
-                        ? `bg-gradient-to-br ${role.color} text-white shadow-lg` 
+                        ? `${role.color} text-white shadow-lg` 
                         : 'bg-slate-800 text-muted-foreground hover:bg-slate-700'
                     }`}
                   >

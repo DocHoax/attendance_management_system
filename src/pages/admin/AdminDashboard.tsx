@@ -890,7 +890,7 @@ export function AdminDashboard() {
                 </div>
               )}
 
-              <Button onClick={handleSubmitCourse} disabled={isSavingCourse || lecturers.length === 0} className="btn-glow bg-gradient-to-r from-primary to-secondary">
+              <Button onClick={handleSubmitCourse} disabled={isSavingCourse || lecturers.length === 0} className="btn-glow bg-primary">
                 <Plus className="mr-2 h-4 w-4" />
                 {isSavingCourse ? (editingCourseId ? 'Updating...' : 'Creating...') : editingCourseId ? 'Update Course' : 'Create Course'}
               </Button>
@@ -1037,7 +1037,7 @@ export function AdminDashboard() {
                 <Button
                   onClick={handleBulkEnrollStudents}
                   disabled={isSavingBulkEnrollment || bulkMatricNumbers.length === 0 || courses.length === 0}
-                  className="w-full bg-gradient-to-r from-primary to-secondary"
+                  className="w-full bg-primary"
                 >
                   <UserPlus className="mr-2 h-4 w-4" />
                   {isSavingBulkEnrollment ? 'Bulk enrolling...' : 'Bulk Enroll Students'}

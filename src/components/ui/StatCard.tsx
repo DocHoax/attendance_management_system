@@ -13,10 +13,10 @@ interface StatCardProps {
 }
 
 const colorStyles = {
-  primary: 'from-blue-500/20 to-blue-600/10 text-blue-400',
-  success: 'from-emerald-500/20 to-emerald-600/10 text-emerald-400',
-  warning: 'from-amber-500/20 to-amber-600/10 text-amber-400',
-  secondary: 'from-violet-500/20 to-violet-600/10 text-violet-400'
+  primary: 'bg-blue-500/10 text-blue-400',
+  success: 'bg-emerald-500/10 text-emerald-400',
+  warning: 'bg-amber-500/10 text-amber-400',
+  secondary: 'bg-violet-500/10 text-violet-400'
 };
 
 const iconBgStyles = {
@@ -43,8 +43,8 @@ export function StatCard({
       transition={{ duration: 0.4, delay }}
       className={`glass-card p-6 relative overflow-hidden group`}
     >
-      {/* Gradient Background */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${colorStyles[color]} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+      {/* Subtle Background */}
+      <div className={`absolute inset-0 ${colorStyles[color]} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
       
       <div className="relative z-10">
         <div className="flex items-start justify-between mb-4">

@@ -166,7 +166,7 @@ export function QRCodeDisplay({ session, onClose, scannedCount }: QRCodeDisplayP
           </div>
           <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
             <motion.div
-              className="h-full bg-gradient-to-r from-primary to-secondary"
+              className="h-full bg-primary"
               initial={{ width: 0 }}
               animate={{ width: `${(scannedCount / session.totalStudents) * 100}%` }}
               transition={{ duration: 0.5 }}
