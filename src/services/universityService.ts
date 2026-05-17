@@ -1867,7 +1867,7 @@ export async function upsertStudentProgress(userId: string, entries: Array<{ cou
 
   const { data, error } = await supabase
     .from('student_progress')
-    .upsert(rows, { onConflict: ['user_id', 'course_id', 'key'] })
+    .upsert(rows, { onConflict: 'user_id,course_id,key' })
     .select('*');
 
   if (error) return null;
@@ -1891,10 +1891,9 @@ export function subscribeToStudentProgress(userId: string, onChange: (entry: Pro
 
   const channel = supabase.channel(`student-progress:${userId}`);
 
-  channel.on('postgres_changes', { event: '*', schema: 'public', table: 'student_progress' }, (payload) => {
+  channel.on('postgres_changes', { event: '*', schema: 'public', table: 'student_progress', filter: `user_id=eq.${userId}` }, (payload) => {
     const newRow = payload.new as StudentProgressRow | undefined;
     if (!newRow) return;
-    if (newRow.user_id !== userId) return;
 
     onChange({
       id: newRow.id,
